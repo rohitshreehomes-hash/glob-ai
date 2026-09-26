@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Database (local paper-trading data)
+data/*.db
+data/*.db-*
+
+# Env
+.env
+.env*.local
+
+# Logs / OS
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+*.pem
+
+# Misc
+coverage/
+.nyc_output/
+tsconfig.tsbuildinfo
