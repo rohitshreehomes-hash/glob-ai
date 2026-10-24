@@ -1,0 +1,492 @@
+//@version=6
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SBE ACTIVITY MAP  —  "Log yahan trade kar rahe hain"  +  BUY / SALE / SIDE / EXIT
+//  ───────────────────────────────────────────────────────────────────────────
+//  Ye indicator 2 kaam karta hai:
+//
+//  1) ACTIVITY MAP  (Volume Profile)
+//     • Jis price par sabse zyada volume traded hua = POC  (sabse strong level)
+//     • Value Area (VAH - VAL) = jahan 70% trading hui  -> "crowd ka area"
+//     • HVN shelves = high volume nodes (mota volume = strong support/resistance)
+//     • Right side me histogram = kis price par kitna volume
+//     • Volume spike dots = jahan log zyada trade kar rahe the
+//
+//  2) CONFIRMATION ENGINE
+//     • BUY   ✓  = VAL/POC support se rejection + volume + structure  (long leg)
+//     • SALE  ✓  = VAH/POC rejection + volume + structure            (short leg)
+//     • SIDE     = value area ke andar tight base -> wait karo, trade nahi
+//     • EXIT     = POC loss / target hit / swing flip / trail
+//
+//  • Har signal bar CLOSE par confirm hota hai (barstate.isconfirmed) -> repaint nahi.
+//  • Side base (tight range) detect hota hai, breakout par BUY/SALE confirm milta hai.
+//  • Dashboard me: decision, reason, POC/VAH/VAL, volume ratio, entry, SL/TP, score.
+// ═══════════════════════════════════════════════════════════════════════════════
+indicator("SBE Activity Map — BUY / SALE / SIDE / EXIT", "SBE Activity", overlay = true, max_labels_count = 500, max_lines_count = 100, max_boxes_count = 500)
+
+// ───────────────────────── ① ACTIVITY / PROFILE ──────────────────────────────
+string gProf    = "① Trading activity (volume profile)"
+string anchorIn = input.string("Day", "Anchor", options = ["Day", "Week", "Month"], group = gProf, tooltip = "Profile ka reset period. Day = aaj ka profile (intraday ke liye best).")
+int    nRows    = input.int(24, "Rows (bins)", minval = 8, maxval = 60, group = gProf)
+float  vaPct    = input.float(70.0, "Value area %", minval = 30, maxval = 95, step = 5, group = gProf)
+float  padPct   = input.float(10.0, "Range padding %", minval = 0, maxval = 50, step = 5, group = gProf, tooltip = "Profile range (session high/low) ko upar-neeche kitna failaye. 0-10 best hai.")
+int    profW    = input.int(30, "Histogram width (bars)", minval = 5, maxval = 60, group = gProf)
+float  hvnRatio = input.float(65.0, "HVN threshold (% of POC)", minval = 20, maxval = 95, step = 5, group = gProf, tooltip = "POC ke muqable itna volume ho to wo shelf HVN mani jayegi.")
+bool   showHist  = input.bool(true, "Histogram (right side)", group = gProf)
+bool   showLines = input.bool(true, "POC / VAH / VAL lines", group = gProf)
+bool   showBand  = input.bool(true, "Value area shading", group = gProf)
+bool   showSpike = input.bool(true, "Volume spike dots", group = gProf)
+
+string anchorTf = anchorIn == "Day" ? "D" : anchorIn == "Week" ? "W" : "M"
+
+// ─────────────────────────── ② SIGNAL CONFIRM ────────────────────────────────
+string gSig    = "② Signal confirm"
+float  volMult = input.float(1.3, "Volume spike × (vs average)", minval = 0.5, step = 0.1, group = gSig)
+int    volLen  = input.int(20, "Volume average length", minval = 5, group = gSig)
+int    minConf = input.int(2, "Min confirmations (1-4)", minval = 1, maxval = 4, group = gSig, tooltip = "1 = loose, 4 = sirf sabse strong setups.")
+bool   useEma  = input.bool(true, "EMA filter (gate)", group = gSig)
+int    emaLen  = input.int(21, "EMA length", minval = 2, group = gSig)
+int    pivLen  = input.int(5, "Pivot length (structure)", minval = 2, maxval = 50, group = gSig)
+bool   allowLong  = input.bool(true, "Allow BUY", group = gSig)
+bool   allowShort = input.bool(true, "Allow SALE", group = gSig)
+bool   allowReverse = input.bool(false, "Reverse on flip", group = gSig)
+
+// ───────────────────────────── ③ EXITS ───────────────────────────────────────
+string gEx = "③ Exits"
+bool   exitOnPoc   = input.bool(true, "Exit on POC loss", group = gEx, tooltip = "Entry POC ke upar thi aur price POC ke neeche band ho gaya -> EXIT.")
+bool   exitOnTarget = input.bool(true, "Exit at target", group = gEx)
+bool   exitOnSwing = input.bool(true, "Exit on swing flip", group = gEx)
+bool   useTrail    = input.bool(false, "ATR trailing stop", group = gEx)
+int    atrLen      = input.int(14, "ATR length", minval = 1, group = gEx)
+float  trailMult   = input.float(2.0, "ATR ×", minval = 0.1, step = 0.1, group = gEx)
+
+// ──────────────────────────── ④ SIDE BASE ────────────────────────────────────
+string gBase = "④ Side base"
+bool   detectBase = input.bool(true, "Detect side base", group = gBase)
+int    baseLen    = input.int(12, "Lookback (bars)", minval = 5, maxval = 100, group = gBase)
+float  baseMult   = input.float(2.0, "Max height (× ATR)", minval = 0.2, step = 0.1, group = gBase, tooltip = "Box nahi ban raha to 2.5-3.0 karo.")
+bool   tradeBase  = input.bool(true, "Trade base breakout", group = gBase)
+bool   showBaseBox = input.bool(true, "Show base box", group = gBase)
+int    baseExpiry = input.int(30, "Breakout valid (bars)", minval = 1, maxval = 200, group = gBase)
+
+// ─────────────────────────── ⑤ SESSION / STYLE ───────────────────────────────
+string gSess   = "⑤ Session"
+bool   useSess = input.bool(false, "Signal only inside session", group = gSess)
+string sessStr = input.session("0915-1530", "Session", group = gSess)
+string sessTz  = input.string("Asia/Kolkata", "Timezone", group = gSess)
+
+string gStyle    = "⑥ Style"
+color  cBuy      = input.color(#26a69a, "BUY",  inline = "c1", group = gStyle)
+color  cSell     = input.color(#ef5350, "SALE", inline = "c1", group = gStyle)
+color  cExit     = input.color(#ffa726, "EXIT", inline = "c1", group = gStyle)
+color  cSide     = input.color(#787b86, "SIDE", inline = "c2", group = gStyle)
+color  cPoc      = input.color(#ffb74d, "POC",  inline = "c2", group = gStyle)
+color  cHvn      = input.color(#42a5f5, "HVN",  inline = "c2", group = gStyle)
+string lblSizeIn = input.string("normal", "Label size", options = ["tiny", "small", "normal", "large"], inline = "c3", group = gStyle)
+bool   showTable = input.bool(true, "Dashboard", inline = "c3", group = gStyle)
+bool   showReason = input.bool(true, "Reason in label", group = gStyle)
+
+string lblSz = switch lblSizeIn
+    "tiny"  => size.tiny
+    "small" => size.small
+    "large" => size.large
+    =>        size.normal
+
+f_label(_x, _y, _txt, _col, _atLow) =>
+    label.new(_x, _y, _txt, xloc = xloc.bar_index, yloc = yloc.price, color = color.new(_col, 10), style = _atLow ? label.style_label_up : label.style_label_down, textcolor = color.white, size = lblSz)
+
+// ──────────────────────────── CORE SERIES ────────────────────────────────────
+float atr    = ta.atr(atrLen)
+float atrU   = nz(atr, (high - low) * 2)
+float emaF   = ta.ema(close, emaLen)
+float volAvg = ta.sma(volume, volLen)
+bool  volSpike = volume > volAvg * volMult
+bool  inSes  = not useSess or not na(time(timeframe.period, sessStr, sessTz))
+float hiN    = ta.highest(high, baseLen)
+float loN    = ta.lowest(low, baseLen)
+bool  barDone = barstate.isconfirmed
+
+float ph    = ta.pivothigh(high, pivLen, pivLen)
+float pl    = ta.pivotlow(low, pivLen, pivLen)
+bool  newPH = not na(ph)
+bool  newPL = not na(pl)
+
+// ───────────────────────── VOLUME PROFILE (session) ──────────────────────────
+// Per-bar data session ke liye store hoti hai; profile ka range = session ka
+// developing high/low (+padding). Range badle to poora profile dobara banta hai,
+// warna sirf nayi bar ka volume add hota hai -> fast + bilkul accurate POC.
+var array<float> bins = array.new_float(nRows, 0.0)
+var array<float> bHi  = array.new_float()
+var array<float> bLo  = array.new_float()
+var array<float> bVol = array.new_float()
+var float rHi = na
+var float rLo = na
+
+bool newSess = timeframe.change(anchorTf) or bar_index == 0
+
+if newSess
+    array.fill(bins, 0.0)
+    array.clear(bHi)
+    array.clear(bLo)
+    array.clear(bVol)
+    rHi := high
+    rLo := low
+
+float rngMin = atrU * 0.5
+float rng0   = math.max(rHi - rLo, rngMin)
+bool  expand = high > rHi + rng0 * padPct / 100.0 or low < rLo - rng0 * padPct / 100.0
+
+if expand
+    rHi := math.max(rHi, high)
+    rLo := math.min(rLo, low)
+
+array.push(bHi, high)
+array.push(bLo, low)
+array.push(bVol, nz(volume, 1.0))
+
+float rng    = math.max(rHi - rLo, rngMin)
+float pLo    = rLo - rng * padPct / 100.0
+float pHi    = rHi + rng * padPct / 100.0
+float pStep  = (pHi - pLo) / nRows
+bool  canBin = pStep > 0
+bool  rebuild = newSess or expand
+
+if canBin
+    if rebuild
+        array.fill(bins, 0.0)
+        for i = 0 to array.size(bHi) - 1
+            int   i1 = math.max(0, math.min(nRows - 1, int((array.get(bLo, i) - pLo) / pStep)))
+            int   i2 = math.max(0, math.min(nRows - 1, int((array.get(bHi, i) - pLo) / pStep)))
+            float vI = array.get(bVol, i) / (i2 - i1 + 1)
+            for k = i1 to i2
+                array.set(bins, k, array.get(bins, k) + vI)
+    else
+        int   b1 = math.max(0, math.min(nRows - 1, int((low  - pLo) / pStep)))
+        int   b2 = math.max(0, math.min(nRows - 1, int((high - pLo) / pStep)))
+        float vB = nz(volume, 1.0) / (b2 - b1 + 1)
+        for k = b1 to b2
+            array.set(bins, k, array.get(bins, k) + vB)
+
+// POC (sabse zyada volume wali row)
+float maxV = 0.0
+int   pocB = 0
+if canBin
+    for k = 0 to nRows - 1
+        float v = array.get(bins, k)
+        if v > maxV
+            maxV := v
+            pocB := k
+
+// Value area (70%) — POC se upar-neeche expand
+float totalV  = array.sum(bins)
+float targetV = totalV * vaPct / 100.0
+float accV    = maxV
+int   upI     = pocB
+int   dnI     = pocB
+
+for k = 1 to nRows
+    if accV < targetV
+        bool  canU = upI < nRows - 1
+        bool  canD = dnI > 0
+        float vU   = array.get(bins, math.min(upI + 1, nRows - 1))
+        float vD   = array.get(bins, math.max(dnI - 1, 0))
+        if canU and (vU >= vD or not canD)
+            upI  += 1
+            accV += vU
+        else if canD
+            dnI  -= 1
+            accV += vD
+
+float pocPx = canBin ? pLo + (pocB + 0.5) * pStep : na
+float vahPx = canBin ? pLo + (upI + 1) * pStep   : na
+float valPx = canBin ? pLo + dnI * pStep         : na
+bool  okProf = not na(pocPx) and not na(vahPx) and not na(valPx)
+
+bool insideVA = okProf and close <= nz(vahPx, close) and close >= nz(valPx, close)
+
+// ───────────────────────── VALUE AREA BAND + LINES ───────────────────────────
+var box  vaBox = na
+var line lnPoc = na
+var line lnVah = na
+var line lnVal = na
+
+if showBand and okProf and not na(sessStart)
+    if na(vaBox)
+        vaBox := box.new(sessStart, vahPx, bar_index + 2, valPx, border_color = color.new(color.gray, 100), bgcolor = color.new(cSide, 94))
+    else
+        box.set_left(vaBox, sessStart)
+        box.set_right(vaBox, bar_index + 2)
+        box.set_top(vaBox, vahPx)
+        box.set_bottom(vaBox, valPx)
+
+if showLines and okProf and not na(sessStart)
+    if na(lnPoc)
+        lnPoc := line.new(sessStart, pocPx, bar_index + 2, pocPx, color = cPoc, width = 2)
+        lnVah := line.new(sessStart, vahPx, bar_index + 2, vahPx, color = color.new(cHvn, 30), width = 1, style = line.style_dashed)
+        lnVal := line.new(sessStart, valPx, bar_index + 2, valPx, color = color.new(cHvn, 30), width = 1, style = line.style_dashed)
+    else
+        line.set_xy1(lnPoc, sessStart, pocPx)
+        line.set_xy2(lnPoc, bar_index + 2, pocPx)
+        line.set_xy1(lnVah, sessStart, vahPx)
+        line.set_xy2(lnVah, bar_index + 2, vahPx)
+        line.set_xy1(lnVal, sessStart, valPx)
+        line.set_xy2(lnVal, bar_index + 2, valPx)
+
+// ─────────────────────── HISTOGRAM (right side, last bar) ────────────────────
+var array<box> hBox = array.new<box>()
+
+if barstate.islast and showHist
+    if array.size(hBox) != nRows
+        if array.size(hBox) > 0
+            for i = 0 to array.size(hBox) - 1
+                box.delete(array.get(hBox, i))
+            array.clear(hBox)
+        for i = 0 to nRows - 1
+            array.push(hBox, box.new(bar_index + 3, 0.0, bar_index + 4, 0.0, border_color = color.new(color.gray, 100), bgcolor = color.new(cHvn, 70)))
+    if canBin and maxV > 0
+        for i = 0 to nRows - 1
+            float hv  = array.get(bins, i)
+            box   b   = array.get(hBox, i)
+            int   w   = math.max(1, int(math.round(profW * hv / maxV)))
+            bool  isP  = i == pocB
+            bool  isU  = i == upI
+            bool  isD  = i == dnI
+            box.set_top(b, pLo + (i + 1) * pStep)
+            box.set_bottom(b, pLo + i * pStep)
+            box.set_left(b, bar_index + 3)
+            box.set_right(b, bar_index + 3 + w)
+            box.set_bgcolor(b, hv <= 0 ? color.new(cHvn, 100) : isP ? color.new(cPoc, 10) : hv >= maxV * hvnRatio / 100.0 ? color.new(cHvn, 35) : color.new(cHvn, 72))
+            box.set_text(b, isP ? "POC" : isU ? "VAH" : isD ? "VAL" : "")
+            box.set_text_color(b, color.white)
+            box.set_text_size(b, size.tiny)
+            box.set_text_halign(b, text.align_center)
+            box.set_text_valign(b, text.align_center)
+
+// ────────────────────────── SWING / STRUCTURE ────────────────────────────────
+var float lastSH = na
+var float lastSL = na
+var float prevSH = na
+var float prevSL = na
+
+if newPH
+    prevSH := lastSH
+    lastSH := ph
+if newPL
+    prevSL := lastSL
+    lastSL := pl
+
+var bool trendUp = true
+if newPL and (na(prevSL) or pl > prevSL)
+    trendUp := true
+if newPH and (na(prevSH) or ph < prevSH)
+    trendUp := false
+
+// ───────────────────────────── SIDE BASE ─────────────────────────────────────
+bool tightBase = detectBase and (hiN - loN) <= baseMult * atrU
+
+var box   baseBox   = na
+var float baseTop   = na
+var float baseBot   = na
+var int   baseCnt   = 0
+var bool  baseArmed = false
+var int   baseEnd   = na
+
+if tightBase
+    baseCnt += 1
+    if baseCnt == baseLen
+        baseTop   := hiN
+        baseBot   := loN
+        baseArmed := false
+        if showBaseBox
+            baseBox := box.new(bar_index - baseLen + 1, baseTop, bar_index, baseBot, border_color = color.new(cSide, 20), border_width = 1, bgcolor = color.new(cSide, 88), text = "SIDE BASE", text_size = size.small, text_color = cSide, text_halign = text.align_center, text_valign = text.align_center)
+    if baseCnt > baseLen
+        baseTop := math.max(baseTop, high)
+        baseBot := math.min(baseBot, low)
+        if not na(baseBox)
+            box.set_top(baseBox, baseTop)
+            box.set_bottom(baseBox, baseBot)
+            box.set_right(baseBox, bar_index)
+else
+    if baseCnt >= baseLen
+        baseArmed := true
+        baseEnd   := bar_index - 1
+    baseCnt := 0
+    baseBox := na
+
+bool baseUp      = baseArmed and not na(baseTop) and close > baseTop
+bool baseDn      = baseArmed and not na(baseBot) and close < baseBot
+bool baseExpired = baseArmed and not na(baseEnd) and (bar_index - baseEnd) > baseExpiry
+
+if baseUp or baseDn or baseExpired
+    baseArmed := false
+
+// ───────────────────────────── TRIGGERS ──────────────────────────────────────
+bool trigValReject  = okProf and low  <= nz(valPx, low) and close > nz(valPx, close) and close > open
+bool trigVahReject  = okProf and high >= nz(vahPx, high) and close < nz(vahPx, close) and close < open
+bool xPocUp = ta.crossover(close, pocPx) == true
+bool xPocDn = ta.crossunder(close, pocPx) == true
+bool trigPocReclaim = okProf and xPocUp
+bool trigPocLoss    = okProf and xPocDn
+bool trigBaseUp     = tradeBase and baseUp
+bool trigBaseDn     = tradeBase and baseDn
+bool trigSwingUp    = newPL and trendUp
+bool trigSwingDn    = newPH and not trendUp
+
+bool trigUp = trigValReject or trigPocReclaim or trigBaseUp or trigSwingUp
+bool trigDn = trigVahReject or trigPocLoss  or trigBaseDn or trigSwingDn
+
+// ───────────────────────────── CONFIRMATIONS ─────────────────────────────────
+int confUp = (close > nz(pocPx, close) ? 1 : 0) + (volSpike ? 1 : 0) + (trendUp ? 1 : 0) + (close > nz(valPx, close) ? 1 : 0)
+int confDn = (close < nz(pocPx, close) ? 1 : 0) + (volSpike ? 1 : 0) + (not trendUp ? 1 : 0) + (close < nz(vahPx, close) ? 1 : 0)
+
+bool emaOkUp = not useEma or close > emaF
+bool emaOkDn = not useEma or close < emaF
+
+// ───────────────────────────── SIGNAL STATE ──────────────────────────────────
+var int   state = 0            // 1 long, -1 short, 0 flat
+var float entryPx = na
+var float stopPx  = na
+var float tpPx    = na
+var bool  eAbovePoc = false
+var bool  eBelowPoc = false
+var float realized  = 0.0
+var int   tradesN   = 0
+var int   winsN     = 0
+
+bool buySig  = false
+bool sellSig = false
+bool exitSig = false
+bool didExit = false
+string buyWhy  = ""
+string sellWhy = ""
+
+// ──────────────────────────────── EXITS ──────────────────────────────────────
+bool trailLongHit  = useTrail and not na(stopPx) and low  <= nz(stopPx, low)
+bool trailShortHit = useTrail and not na(stopPx) and high >= nz(stopPx, high)
+bool pocLongExit   = exitOnPoc and eAbovePoc and trigPocLoss
+bool pocShortExit  = exitOnPoc and eBelowPoc and trigPocReclaim
+bool tgtLongExit   = exitOnTarget and not na(tpPx) and close >= nz(tpPx, close + 1)
+bool tgtShortExit  = exitOnTarget and not na(tpPx) and close <= nz(tpPx, close - 1)
+
+bool exitLong  = state ==  1 and (pocLongExit  or tgtLongExit  or (exitOnSwing and trigSwingDn) or trailLongHit)
+bool exitShort = state == -1 and (pocShortExit or tgtShortExit or (exitOnSwing and trigSwingUp) or trailShortHit)
+
+if exitLong and barDone
+    float pxL = trailLongHit ? nz(stopPx, close) : close
+    f_label(bar_index, math.max(high, pxL), "EXIT", cExit, false)
+    realized += pxL - entryPx
+    tradesN  += 1
+    if pxL > entryPx
+        winsN += 1
+    state := 0
+    entryPx := na
+    stopPx  := na
+    tpPx    := na
+    exitSig := true
+    didExit := true
+
+if exitShort and barDone
+    float pxS = trailShortHit ? nz(stopPx, close) : close
+    f_label(bar_index, math.min(low, pxS), "EXIT", cExit, true)
+    realized += entryPx - pxS
+    tradesN  += 1
+    if pxS < entryPx
+        winsN += 1
+    state := 0
+    entryPx := na
+    stopPx  := na
+    tpPx    := na
+    exitSig := true
+    didExit := true
+
+// ──────────────────────────────── ENTRIES ────────────────────────────────────
+bool canEnter = state == 0 and (allowReverse or not didExit) and barDone and inSes and okProf
+
+if canEnter and allowLong and trigUp and confUp >= minConf and emaOkUp
+    state   := 1
+    entryPx := close
+    float slL = trigBaseUp and not na(baseBot) ? baseBot : nz(valPx, close)
+    stopPx  := math.max(slL, close - atrU * 3)
+    tpPx    := close > pocPx ? (close < vahPx ? vahPx : close + (vahPx - valPx) * 0.5) : pocPx
+    eAbovePoc := close > pocPx
+    eBelowPoc := false
+    buyWhy := trigBaseUp ? "base BO" : trigPocReclaim ? "POC reclaim" : trigValReject ? "VAL reject" : "HL swing"
+    buySig := true
+    f_label(bar_index, low, showReason ? "BUY ✓\n" + buyWhy : "BUY ✓", cBuy, true)
+
+if canEnter and allowShort and trigDn and confDn >= minConf and emaOkDn
+    state   := -1
+    entryPx := close
+    float slS = trigBaseDn and not na(baseTop) ? baseTop : nz(vahPx, close)
+    stopPx  := math.min(slS, close + atrU * 3)
+    tpPx    := close < pocPx ? (close > valPx ? valPx : close - (vahPx - valPx) * 0.5) : pocPx
+    eAbovePoc := false
+    eBelowPoc := close < pocPx
+    sellWhy := trigBaseDn ? "base BO" : trigPocLoss ? "POC loss" : trigVahReject ? "VAH reject" : "LH swing"
+    sellSig := true
+    f_label(bar_index, high, showReason ? "SALE ✓\n" + sellWhy : "SALE ✓", cSell, false)
+
+// ATR trailing
+if state == 1 and useTrail
+    stopPx := na(stopPx) ? low - trailMult * atrU : math.max(stopPx, low - trailMult * atrU)
+if state == -1 and useTrail
+    stopPx := na(stopPx) ? high + trailMult * atrU : math.min(stopPx, high + trailMult * atrU)
+
+// ───────────────────────────── SIDE MODE ─────────────────────────────────────
+bool sideNow = detectBase and tightBase and insideVA and state == 0
+var bool sidePrev = false
+bool sideStart = sideNow and not sidePrev
+sidePrev := sideNow
+
+if sideStart and barDone
+    f_label(bar_index, high, "SIDE", cSide, false)
+
+// ───────────────────────────────── PLOTS ─────────────────────────────────────
+plot(emaF, "EMA", color.new(#ab47bc, 30), 1)
+plotshape(showSpike and volSpike, "Volume spike", shape.circle, location.bottom, color.new(cHvn, 45), size = size.tiny)
+
+// ─────────────────────────────── DASHBOARD ───────────────────────────────────
+var table dash = table.new(position.top_right, 2, 11, border_width = 1, frame_width = 1, frame_color = color.new(color.gray, 60), border_color = color.new(color.gray, 85))
+
+if showTable and barstate.islast
+    color  mc   = color.new(#b2b5be, 0)
+    color  hdr  = color.new(#1e222d, 0)
+    string dec  = buySig ? "BUY CONFIRM ✓" : sellSig ? "SALE CONFIRM ✓" : state == 1 ? "LONG RUNNING" : state == -1 ? "SHORT RUNNING" : sideNow ? "SIDE — WAIT" : "NO TRADE — WAIT"
+    color  dcol = buySig or state == 1 ? cBuy : sellSig or state == -1 ? cSell : cSide
+    string posT = state == 1 ? "LONG" : state == -1 ? "SHORT" : "FLAT"
+    string why  = buySig ? buyWhy : sellSig ? sellWhy : "—"
+    string slt  = na(stopPx) ? "—" : str.tostring(stopPx, format.mintick) + " / " + str.tostring(tpPx, format.mintick)
+    table.cell(dash, 0, 0, "SBE ACTIVITY", text_color = color.white, text_size = size.small, bgcolor = hdr)
+    table.cell(dash, 1, 0, syminfo.ticker + " · " + timeframe.period, text_color = mc, text_size = size.small, bgcolor = hdr)
+    table.cell(dash, 0, 1, "Decision", text_color = mc, text_size = size.small)
+    table.cell(dash, 1, 1, dec, text_color = color.white, text_size = size.small, bgcolor = dcol)
+    table.cell(dash, 0, 2, "Trigger", text_color = mc, text_size = size.small)
+    table.cell(dash, 1, 2, why, text_color = color.white, text_size = size.small)
+    table.cell(dash, 0, 3, "Position", text_color = mc, text_size = size.small)
+    table.cell(dash, 1, 3, posT, text_color = state == 0 ? color.white : color.black, text_size = size.small, bgcolor = state == 0 ? color.new(cSide, 40) : state == 1 ? cBuy : cSell)
+    table.cell(dash, 0, 4, "POC (max activity)", text_color = mc, text_size = size.small)
+    table.cell(dash, 1, 4, na(pocPx) ? "—" : str.tostring(pocPx, format.mintick), text_color = cPoc, text_size = size.small)
+    table.cell(dash, 0, 5, "VAH / VAL", text_color = mc, text_size = size.small)
+    table.cell(dash, 1, 5, na(vahPx) or na(valPx) ? "—" : str.tostring(vahPx, format.mintick) + " / " + str.tostring(valPx, format.mintick), text_color = color.white, text_size = size.small)
+    table.cell(dash, 0, 6, "Volume", text_color = mc, text_size = size.small)
+    table.cell(dash, 1, 6, str.tostring(nz(volume / volAvg), "#.##") + "× avg" + (volSpike ? " ⚡" : ""), text_color = volSpike ? cBuy : mc, text_size = size.small)
+    table.cell(dash, 0, 7, "Entry", text_color = mc, text_size = size.small)
+    table.cell(dash, 1, 7, na(entryPx) ? "—" : str.tostring(entryPx, format.mintick), text_color = color.white, text_size = size.small)
+    table.cell(dash, 0, 8, "SL / Target", text_color = mc, text_size = size.small)
+    table.cell(dash, 1, 8, slt, text_color = color.white, text_size = size.small)
+    table.cell(dash, 0, 9, "Score L / S", text_color = mc, text_size = size.small)
+    table.cell(dash, 1, 9, str.tostring(confUp) + "/4 · " + str.tostring(confDn) + "/4", text_color = color.white, text_size = size.small)
+    table.cell(dash, 0, 10, "Trades (W/L)", text_color = mc, text_size = size.small)
+    table.cell(dash, 1, 10, str.tostring(tradesN) + " (" + str.tostring(winsN) + "/" + str.tostring(tradesN - winsN) + ") · " + str.tostring(realized, "#.##") + " pts", text_color = realized >= 0 ? cBuy : cSell, text_size = size.small)
+
+// ───────────────────────────────── ALERTS ────────────────────────────────────
+alertcondition(buySig, title = "BUY CONFIRM", message = "BUY confirmed • {{ticker}} • {{interval}} • @ {{close}}")
+alertcondition(sellSig, title = "SALE CONFIRM", message = "SALE confirmed • {{ticker}} • {{interval}} • @ {{close}}")
+alertcondition(exitSig, title = "EXIT", message = "EXIT • {{ticker}} • {{interval}} • @ {{close}}")
+alertcondition(sideStart, title = "SIDE — wait", message = "SIDE base — no trade • {{ticker}} • {{interval}}")
+
+if buySig
+    alert("BUY CONFIRM " + syminfo.ticker + " " + timeframe.period + " @ " + str.tostring(close, format.mintick) + " (" + buyWhy + ")", alert.freq_once_per_bar_close)
+if sellSig
+    alert("SALE CONFIRM " + syminfo.ticker + " " + timeframe.period + " @ " + str.tostring(close, format.mintick) + " (" + sellWhy + ")", alert.freq_once_per_bar_close)
+if exitSig
+    alert("EXIT " + syminfo.ticker + " " + timeframe.period + " @ " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)

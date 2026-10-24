@@ -213,6 +213,7 @@ docker run -p 8000:8000 glob-ai
 
 | Script | Kaam |
 |---|---|
+| [`pine/SBE_Activity_Confirm.pine`](pine/SBE_Activity_Confirm.pine) | **SBE Activity Map** — Volume Profile (POC / Value Area) se **BUY • SALE • SIDE • EXIT** confirmation + dashboard |
 | [`pine/SBE_Swing_Indicator.pine`](pine/SBE_Swing_Indicator.pine) | **SALE • BUY • EXIT — Swing + Side Base** indicator (labels + base box + alerts) |
 | [`pine/SBE_Swing_Strategy.pine`](pine/SBE_Swing_Strategy.pine) | Wahi logic ka backtest strategy (Strategy Tester) |
 
