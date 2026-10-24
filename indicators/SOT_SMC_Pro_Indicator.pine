@@ -1,5 +1,5 @@
 //@version=6
-indicator("S.O.T SMC Pro v9 [Apex Predictive + Sideways Range Engine]", shorttitle="S.O.T Apex v9", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+indicator("S.O.T SMC Pro v9.1 [Apex Early Trigger + Range Engine]", shorttitle="S.O.T Apex v9.1", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
 
 // =============================================================================
 // 1. INPUT SETTINGS - S.O.T ACADEMY APEX v9 (PREDICTIVE + RANGE + SEBI GAMMA ENGINE)
@@ -11,6 +11,18 @@ GRP_4 = "4. v8 4-Tier Apex Ratchet (Unified +0.20R Fee-Safe BE + 2R Floor + Clim
 GRP_5 = "5. S.O.T True SMC Structure, VWAP Bands & Equilibrium"
 GRP_6 = "6. Visual Theme, Trade Box & Live Audit Dashboard"
 GRP_0 = "0. v9 Predictive Pre-Signal + Sideways Range Radar"
+GRP_0B = "0B. v9.1 Early Trigger Engine (Jaldi Buy/Sell - More Movement)"
+
+string earlyMode = input.string("Micro 5-Bar", "Early Trigger Mode (Jaldi Entry)", options=["Off (Pivot Break Only)", "Micro 3-Bar (Fastest)", "Micro 5-Bar", "Micro 8-Bar (Safest)"], group=GRP_0B)
+float earlyLeadAtr = input.float(0.20, "Trigger Level Lead (x ATR) - raise for even earlier entry", minval=0.0, maxval=0.60, step=0.02, group=GRP_0B)
+float earlyBodyMin = input.float(0.30, "Min Signal Bar Body (x ATR)", minval=0.10, maxval=0.90, step=0.05, group=GRP_0B)
+float earlyVolX = input.float(1.10, "Min Volume Expansion (x 20-SMA)", minval=0.60, maxval=2.50, step=0.05, group=GRP_0B)
+float earlyErMin = input.float(0.18, "Min Efficiency Ratio For Early Trigger", minval=0.0, maxval=0.60, step=0.02, group=GRP_0B)
+float earlyClvMin = input.float(0.58, "Min Close Location Value (Early)", minval=0.40, maxval=0.90, step=0.02, group=GRP_0B)
+bool earlyNeedEma200 = input.bool(true, "Require 200-EMA Institutional Bias", group=GRP_0B)
+int earlyBlockBars = input.int(12, "Block Late Pivot Re-Entry After Early Signal (Bars)", minval=0, maxval=60, group=GRP_0B)
+bool earlyTagLabels = input.bool(true, "Show EARLY Badge On Signal Label", group=GRP_0B)
+bool showEarlyLevels = input.bool(true, "Draw Live Early Trigger Levels (CE / PE)", group=GRP_0B)
 
 bool usePreSignal = input.bool(true, "Show Pre-Signal Radar Before The Move", group=GRP_0)
 bool allowPreEntry = input.bool(false, "Allow Early Entry On Pre-Signal Confirm (Measured: Off)", group=GRP_0)
@@ -395,6 +407,18 @@ bool chopRegime = useRangeMode and timeframe.isintraday and rangeTradeable and g
 bool trendRegime = timeframe.isintraday and not chopRegime and gapSafeAdx >= rangeAdxMax and erVal10 >= minErRatio
 
 // =============================================================================
+// 3C. v9.1 MICRO-BREAK LEVELS (EARLIEST VALID TRIGGER, ZERO CONFIRMATION LAG)
+// =============================================================================
+bool earlyOn = earlyMode != "Off (Pivot Break Only)"
+int microLen = earlyMode == "Micro 3-Bar (Fastest)" ? 3 : earlyMode == "Micro 8-Bar (Safest)" ? 8 : 5
+float microHiRaw = nz(ta.highest(high, microLen)[1], high)
+float microLoRaw = nz(ta.lowest(low, microLen)[1], low)
+float microBuyLvl = microHiRaw - earlyLeadAtr * atrVal
+float microSellLvl = microLoRaw + earlyLeadAtr * atrVal
+float microDistBull = microBuyLvl - close
+float microDistBear = close - microSellLvl
+
+// =============================================================================
 // 4. PURE DRAWING HELPERS + 4-TIER APEX EXIT STATE MACHINE
 // =============================================================================
 var poiDir = array.new_int(0)
@@ -474,6 +498,8 @@ var bool pdlSweptToday = false
 var int tradesToday = 0
 var int rangeTradesToday = 0
 var int preFiresToday = 0
+var int lastEarlyBar = -999
+var int earlySigCount = 0
 var bool trOpen = false
 var int trDir = 0
 var float trEntry = na
@@ -990,8 +1016,9 @@ bool bearTrig = timeframe.isintraday ? bearPivBreak : evtBos
 bool baseCanEnterTrend = not trOpen and pendDir == 0 and bar_index > lastClosedBar + cooldownBars and tradesToday < maxTradesPerDay and warmupReady and orbWidthOk and coilAdxOk and erRatioOk
 bool baseCanEnterRange = useRangeMode and not trOpen and pendDir == 0 and bar_index > lastClosedBar + cooldownBars and rangeTradesToday < maxRangeTrades and warmupReady and orbWidthOk and coilAdxOk
 bool baseCanEnter = baseCanEnterTrend
-bool trendBuySig = baseCanEnterTrend and timeBullOk and bullRegime and bullTrig and strongBullCnd
-bool trendSellSig = baseCanEnterTrend and timeBearOk and bearRegime and bearTrig and strongBearCnd and not trendBuySig
+bool earlyBlockReentry = earlyBlockBars > 0 and lastEarlyBar > 0 and bar_index - lastEarlyBar <= earlyBlockBars
+bool trendBuySig = baseCanEnterTrend and not earlyBlockReentry and timeBullOk and bullRegime and bullTrig and strongBullCnd
+bool trendSellSig = baseCanEnterTrend and not earlyBlockReentry and timeBearOk and bearRegime and bearTrig and strongBearCnd and not trendBuySig
 float rngSlBull = rangeLo - 0.20 * atrVal
 float rngSlBear = rangeHi + 0.20 * atrVal
 float rngRiskBull = close - rngSlBull
@@ -1004,8 +1031,13 @@ bool rngRiskOkBull = rngRiskBull <= rangeMaxRiskAtr * atrVal and rngRewBull >= r
 bool rngRiskOkBear = rngRiskBear <= rangeMaxRiskAtr * atrVal and rngRewBear >= rangeMinRr * rngRiskBear
 bool rangeBuySig = baseCanEnterRange and rangeSetupBull and rngRiskOkBull and timeBullOk
 bool rangeSellSig = baseCanEnterRange and rangeSetupBear and rngRiskOkBear and timeBearOk and (not isOptionChart or allowOptShort) and not rangeBuySig
-bool buySig = trendBuySig or rangeBuySig
-bool sellSig = not buySig and (trendSellSig or rangeSellSig)
+bool earlyBiasBull = close > sessionVwap and ema9 > ema21 and plusDi > minusDi and (not earlyNeedEma200 or close > ema200)
+bool earlyBiasBear = close < sessionVwap and ema9 < ema21 and minusDi > plusDi and (not earlyNeedEma200 or close < ema200)
+bool earlyOptOk = not isOptionChart or itoGammaOk
+bool earlyBuySig = earlyOn and timeframe.isintraday and baseCanEnterTrend and timeBullOk and not chopRegime and close >= microBuyLvl and close > open and bodySize >= earlyBodyMin * atrVal and volExp >= earlyVolX and clvBull >= earlyClvMin and erVal10 >= earlyErMin and earlyBiasBull and earlyOptOk
+bool earlySellSig = earlyOn and timeframe.isintraday and baseCanEnterTrend and timeBearOk and not chopRegime and close <= microSellLvl and close < open and bodySize >= earlyBodyMin * atrVal and volExp >= earlyVolX and clvBear >= earlyClvMin and erVal10 >= earlyErMin and earlyBiasBear and earlyOptOk
+bool buySig = earlyBuySig or trendBuySig or rangeBuySig
+bool sellSig = not buySig and (earlySellSig or trendSellSig or rangeSellSig)
 float domClv = buySig ? clvBull : sellSig ? clvBear : math.max(clvBull, clvBear)
 bool pdBreakNow = hasValidPd and close > pdhPrice or hasValidPd and close < pdlPrice
 float scoreBonus = isOptionChart ? (volExp >= 1.8 ? 4.0 : 0.0) : (pdBreakNow ? 4.0 : 0.0)
@@ -1017,16 +1049,21 @@ bool fireRange = false
 string fireReason = ""
 int fireConf = signalConf
 string optRsn = isPutContract ? "Apex PE Gamma" : "Apex CE Gamma"
+bool fireEarly = false
 if buySig
     fireEntry := true
     fireBuySide := true
+    fireEarly := earlyBuySig
     fireRange := rangeBuySig
-    fireReason := rangeBuySig ? "v9 Range Fade CE" : isOptionChart ? optRsn : "Apex Sniper CE"
+    fireReason := earlyBuySig ? "v9.1 Early Break CE" : rangeBuySig ? "v9 Range Fade CE" : isOptionChart ? optRsn : "Apex Sniper CE"
 else if sellSig
     fireEntry := true
     fireBuySide := false
+    fireEarly := earlySellSig
     fireRange := rangeSellSig
-    fireReason := rangeSellSig ? "v9 Range Fade PE" : isOptionChart ? "Option Short Breakdown" : "Apex Sniper PE"
+    fireReason := earlySellSig ? "v9.1 Early Break PE" : rangeSellSig ? "v9 Range Fade PE" : isOptionChart ? "Option Short Breakdown" : "Apex Sniper PE"
+bool evtEarlyBuyNow = fireEarly and fireBuySide
+bool evtEarlySellNow = fireEarly and not fireBuySide
 
 // -----------------------------------------------------------------------------
 // 6A. v9 PREDICTIVE PRE-SIGNAL RADAR (ARM -> CONFIRM, BEFORE THE MOVE RUNS)
@@ -1129,6 +1166,8 @@ if preFailBull or preFailBear
     preLevel := float(na)
 
 plot(showPreSignal and preDir != 0 ? preLevel : float(na), title="v9 Pre-Signal Trigger Level", color=color.new(#FFD54F, 15), style=plot.style_linebr, linewidth=1)
+plot(showEarlyLevels and earlyOn and timeframe.isintraday ? microBuyLvl : float(na), title="v9.1 Early CE Trigger Level", color=color.new(#26C6DA, 40), style=plot.style_linebr, linewidth=1)
+plot(showEarlyLevels and earlyOn and timeframe.isintraday ? microSellLvl : float(na), title="v9.1 Early PE Trigger Level", color=color.new(#EC407A, 40), style=plot.style_linebr, linewidth=1)
 
 int htfX1 = bar_index > 15 ? bar_index - 15 : 0
 if showHtfFvg and newHtfBar
@@ -1224,9 +1263,11 @@ if fireEntry
     string optBuyTag = isPutContract ? "BUY PE" : "BUY CE"
     string idxBuyTag = optionLabels ? "Buy CE" : "BUY"
     string idxSellTag = optionLabels ? "Buy PE" : "SELL"
-    string rngTag = rangeBuySig or rangeSellSig ? "RANGE " : ""
-    string buyTxt = rngTag + (isOptionChart ? optBuyTag : idxBuyTag) + confStr
-    string sellTxt = rngTag + (isOptionChart ? "SHORT OPT" : idxSellTag) + confStr
+    string sideTagPre = fireEarly and earlyTagLabels ? "EARLY " : rangeBuySig or rangeSellSig ? "RANGE " : ""
+    string buyTxt = sideTagPre + (isOptionChart ? optBuyTag : idxBuyTag) + confStr
+    string sellTxt = sideTagPre + (isOptionChart ? "SHORT OPT" : idxSellTag) + confStr
+    earlySigCount += fireEarly ? 1 : 0
+    lastEarlyBar := fireEarly ? bar_index : lastEarlyBar
     float callY = fireBuySide ? low - atrVal * 0.28 : high + atrVal * 0.28
     callSt = fireBuySide ? label.style_label_up : label.style_label_down
     color callBg = fireBuySide ? color.new(#10947F, 6) : color.new(#EE0B1F, 6)
@@ -1278,7 +1319,7 @@ barcolor(hlSigBars and sigC ? #FFD54F : colorCandles ? cCol : color(na))
 
 var table topBrand = table.new(position.top_center, 1, 1, bgcolor=TRANSP)
 var table midWatermark = table.new(position.middle_center, 1, 1, bgcolor=TRANSP)
-var table smcDash = table.new(position.top_right, 2, 16, bgcolor=color.new(#0D1017, 8), border_color=color.new(structCol, 65), border_width=1)
+var table smcDash = table.new(position.top_right, 2, 17, bgcolor=color.new(#0D1017, 8), border_color=color.new(structCol, 65), border_width=1)
 
 if barstate.islast
     while array.size(liveBoxes) > 0
@@ -1419,6 +1460,8 @@ if barstate.islast and showDashboard
     string modeHudTxt = chopRegime ? "SIDEWAYS FADE (ADX " + str.tostring(gapSafeAdx, "#.#") + " | ER " + str.tostring(erVal10, "#.##") + ")" : trendRegime ? "TREND IGNITION (ADX " + str.tostring(gapSafeAdx, "#.#") + ")" : "NEUTRAL / WARMING"
     color modeHudCol = chopRegime ? #FFD54F : trendRegime ? #69F0AE : #9AA4B5
     string rangeHudTxt = timeframe.isintraday ? str.tostring(rangeLo, format.mintick) + " - " + str.tostring(rangeHi, format.mintick) + " (" + str.tostring(rangeWidthAtr, "#.##") + " ATR)" : "---"
+    string earlyHudTxt = earlyOn ? "ON | " + str.tostring(microLen) + "-Bar Break | " + str.tostring(earlySigCount) + " fired | CE > " + str.tostring(microBuyLvl, format.mintick) : "OFF (Pivot Break Only)"
+    color earlyHudCol = earlyOn ? #69F0AE : #9AA4B5
     color hdrBg = color.new(#161B26, 2)
     color rowBg = color.new(#0E1118, 6)
     color lblFg = #9AA4B5
@@ -1454,6 +1497,8 @@ if barstate.islast and showDashboard
     table.cell(smcDash, 1, 14, modeHudTxt, bgcolor=rowBg, text_color=modeHudCol, text_size=size.tiny)
     table.cell(smcDash, 0, 15, "Range Box", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
     table.cell(smcDash, 1, 15, rangeHudTxt, bgcolor=rowBg, text_color=#B0BEC5, text_size=size.tiny)
+    table.cell(smcDash, 0, 16, "v9.1 Early Trigger", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 16, earlyHudTxt, bgcolor=rowBg, text_color=earlyHudCol, text_size=size.tiny)
 
 // =============================================================================
 // 7. TRADINGVIEW ALERTS
@@ -1468,4 +1513,6 @@ alertcondition(evtPreBuyArm, title="S.O.T Apex v9: Pre-Signal ARMED (Buy CE Rada
 alertcondition(evtPreSellArm, title="S.O.T Apex v9: Pre-Signal ARMED (Buy PE Radar)", message="S.O.T v9 Pre-Signal ARMED: compression breakdown setup forming below key level on {{ticker}} ({{interval}})")
 alertcondition(evtPreBuyFire, title="S.O.T Apex v9: EARLY BUY CE (Pre-Break Confirmed)", message="S.O.T v9 EARLY ENTRY: pre-break confirmed - bullish sniper trigger on {{ticker}} ({{interval}})")
 alertcondition(evtPreSellFire, title="S.O.T Apex v9: EARLY BUY PE (Pre-Break Confirmed)", message="S.O.T v9 EARLY ENTRY: pre-break confirmed - bearish sniper trigger on {{ticker}} ({{interval}})")
+alertcondition(evtEarlyBuyNow, title="S.O.T Apex v9.1: EARLY BUY CE (Micro Break, Jaldi Entry)", message="S.O.T v9.1 EARLY ENTRY: micro-break bullish trigger on {{ticker}} ({{interval}}) - enter before the move extends")
+alertcondition(evtEarlySellNow, title="S.O.T Apex v9.1: EARLY BUY PE (Micro Break, Jaldi Entry)", message="S.O.T v9.1 EARLY ENTRY: micro-break bearish trigger on {{ticker}} ({{interval}}) - enter before the move extends")
 alertcondition(evtRangeFade, title="S.O.T Apex v9: Sideways Range Fade Trigger", message="S.O.T v9 RANGE FADE: sideways edge rejection trade triggered on {{ticker}} ({{interval}})")
