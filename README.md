@@ -209,15 +209,17 @@ docker run -p 8000:8000 glob-ai
 
 ## 📈 Pine Script — Trading Tools
 
-`pine/` folder me TradingView ke liye ready-made scripts hain:
+`pine/` folder me TradingView ke liye ready-made script hai:
 
-| Script | Kaam |
-|---|---|
-| [`pine/SBE_Activity_Confirm.pine`](pine/SBE_Activity_Confirm.pine) | **SBE Activity Map** — Volume Profile (POC / Value Area) se **BUY • SALE • SIDE • EXIT** confirmation + dashboard |
-| [`pine/SBE_Swing_Indicator.pine`](pine/SBE_Swing_Indicator.pine) | **SALE • BUY • EXIT — Swing + Side Base** indicator (labels + base box + alerts) |
-| [`pine/SBE_Swing_Strategy.pine`](pine/SBE_Swing_Strategy.pine) | Wahi logic ka backtest strategy (Strategy Tester) |
+**[`pine/SBE_AllInOne.pine`](pine/SBE_AllInOne.pine)** — ek hi file me sab kuch:
 
-Setup, settings aur tuning: **[pine/README.md](pine/README.md)**
+- **Activity map** (volume profile): POC, Value Area (VAH/VAL), HVN shelves, histogram, volume spikes
+- **Swing structure**: higher-low / lower-high pivots
+- **Side base**: compression detect + breakout entries
+- **BUY / SALE / SIDE / EXIT** confirmation (4-point score + EMA gate)
+- Dashboard + 4 alerts (BUY / SALE / EXIT / SIDE)
+
+Setup, settings aur testing: **[pine/README.md](pine/README.md)** · **[pine/TEST_REPORT.md](pine/TEST_REPORT.md)**
 
 ## 🤝 Contributing
 
