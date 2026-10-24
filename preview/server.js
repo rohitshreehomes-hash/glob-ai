@@ -59,5 +59,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`S.O.T Academy SMC Pro v8 [Apex Institutional Quantum Engine Terminal] listening on http://0.0.0.0:${PORT}`);
+  console.log(`S.O.T Academy SMC Pro v9.1 [Apex Early Trigger Terminal] listening on http://0.0.0.0:${PORT}`);
 });
