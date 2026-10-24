@@ -1,0 +1,388 @@
+//@version=6
+strategy("S.O.T SMC Pro v8 Strategy [Apex Institutional Backtester]", shorttitle="S.O.T Apex v8 Strat", overlay=true, initial_capital=1000000, currency=currency.INR, default_qty_type=strategy.fixed, default_qty_value=10, commission_type=strategy.commission.percent, commission_value=0.018, slippage=1, margin_long=0, margin_short=0, calc_on_every_tick=false, process_orders_on_close=false)
+
+// 1. INPUT SETTINGS - S.O.T ACADEMY v8 STRATEGY TESTER (100% PARITY WITH INDICATOR)
+GRP_MODE = "1. v8 Apex Engine Mode (Auto Index/Futures vs Direct CE/PE Option)"
+engineModeInput = input.string("Auto-Detect", "Instrument Engine Mode", options=["Auto-Detect", "Index / Futures", "Option Chart (CE/PE)"], group=GRP_MODE)
+indianIndexMode = input.bool(true, "Enable Indian NSE/BSE Session & Auction Shields (IST)", group=GRP_MODE)
+maxTradesPerDay = input.int(2, "Max Sniper Trades Per Day", minval=1, maxval=5, group=GRP_MODE)
+cooldownBars = input.int(4, "Post-Exit Anti-Whipsaw Cooldown Bars (v8 Verified = 4)", minval=0, maxval=20, group=GRP_MODE)
+minClvRatio = input.float(0.65, "Min Close Location Value Anti-Wick Filter (v8 = 0.65)", minval=0.40, maxval=0.90, step=0.05, group=GRP_MODE)
+minErRatio = input.float(0.18, "Min 10-Bar Kaufman Efficiency Ratio (v8 Anti-Sawtooth = 0.18)", minval=0.0, maxval=0.60, step=0.02, group=GRP_MODE)
+
+GRP_OPT = "2. Direct Option Chart (CE / PE) SEBI Monthly & Gamma Shield"
+optWkMin = input.float(0.80, "5-Session Active Liquidity Ratio", minval=0.20, maxval=0.98, step=0.05, group=GRP_OPT)
+optMin5mVol = input.float(800.0, "Min Normalized 5m Option Volume (Weekly Core)", minval=0.0, maxval=10000.0, step=100.0, group=GRP_OPT)
+optThinChainVol = input.float(85000.0, "Min 5m Depth on Thin Monthly Chains (FINNIFTY/BANKEX)", minval=5000.0, maxval=200000.0, step=5000.0, group=GRP_OPT)
+optGamMin = input.float(5.0, "Min 5m Velocity % (Weekly NIFTY/SENSEX = 5.0)", minval=2.0, maxval=12.0, step=0.2, group=GRP_OPT)
+optMonthlyGamMin = input.float(7.8, "Min 5m Velocity % (SEBI Monthly BNK/FINN/BX = 7.8)", minval=4.0, maxval=14.0, step=0.2, group=GRP_OPT)
+optGamMax = input.float(15.5, "Max 5m Option Velocity % (IV Crush Shield)", minval=10.0, maxval=40.0, step=0.5, group=GRP_OPT)
+optMinPremium = input.float(50.0, "Min Option Premium Rs (OTM Decay Shield)", minval=5.0, maxval=300.0, step=5.0, group=GRP_OPT)
+optRelVolMin = input.float(1.02, "Min Relative ATR Expansion vs Baseline", minval=0.80, maxval=1.50, step=0.02, group=GRP_OPT)
+optRsiCap = input.float(82.0, "Max Option RSI Cap", minval=70.0, maxval=92.0, step=1.0, group=GRP_OPT)
+optVolSurge = input.float(1.25, "Min Option Breakout Volume Ratio", minval=0.8, maxval=3.0, step=0.05, group=GRP_OPT)
+optMaxDeadFrac = input.float(0.05, "Max Zero-Range Dead Candle Ratio", minval=0.0, maxval=0.30, step=0.05, group=GRP_OPT)
+allowOptShort = input.bool(false, "Option Writers Only: Allow Short Orders on CE/PE Chart", group=GRP_OPT)
+
+GRP_IDX = "3. Multi-Index Quantum Regime & Structure Engine"
+idxGamMin = input.float(0.100, "Min Index 5m Velocity % (Anti-Chop Shield)", minval=0.040, maxval=0.500, step=0.005, group=GRP_IDX)
+idxRelVolMin = input.float(1.07, "Min Index Relative ATR Expansion (v8 Verified = 1.07)", minval=0.80, maxval=1.60, step=0.01, group=GRP_IDX)
+useEma50Slope = input.bool(true, "Require Institutional EMA 50 Slope Alignment", group=GRP_IDX)
+useMornShield = input.bool(true, "9:30-10:15 Trap Shield (Require Clean PDH/PDL Break)", group=GRP_IDX)
+useOrbFilter = input.bool(true, "Skip Exhausted Wide-ORB Days (> 4.2x 15m ATR)", group=GRP_IDX)
+maxOrb15mMult = input.float(4.2, "Max Allowed ORB Width (x 15m ATR)", minval=2.0, maxval=10.0, step=0.2, group=GRP_IDX)
+maxPriorAdx = input.float(32.0, "Max Prior-Bar ADX (Coiled Ignition Cap)", minval=20.0, maxval=55.0, step=1.0, group=GRP_IDX)
+minDiSpread = input.float(12.0, "Min DI+ vs DI- Institutional Momentum Spread", minval=4.0, maxval=30.0, step=1.0, group=GRP_IDX)
+swingLen = input.int(3, "External Swing Length (Verified swLen = 3)", minval=2, maxval=20, group=GRP_IDX)
+
+GRP_RISK = "4. v8 4-Tier Apex Ratchet (Unified +0.20R Fee-Safe BE + 2R Floor + Climax)"
+idxSl5mMult = input.float(2.7, "Index Initial Stop Loss (5m ATR Mult)", minval=1.5, maxval=5.0, step=0.1, group=GRP_RISK)
+idxTrail15mMult = input.float(2.25, "Index Holding SuperTrend Mult (v8 Verified = 2.25x 15m)", minval=1.5, maxval=4.0, step=0.05, group=GRP_RISK)
+optSl5mMult = input.float(1.9, "Option Initial Stop Loss (5m ATR Mult)", minval=1.2, maxval=4.0, step=0.1, group=GRP_RISK)
+optTrail5mMult = input.float(3.5, "Option Gamma Runner Trail Mult (v8 Verified = 3.5x 5m)", minval=2.0, maxval=6.0, step=0.1, group=GRP_RISK)
+idxPartialPct = input.float(30.0, "Index TP1 Partial Booking % (v8 Verified = 30%)", minval=0.0, maxval=70.0, step=5.0, group=GRP_RISK)
+rrTarget1 = input.float(1.30, "Tier-1 Partial & Fee-Safe BE Trigger (R Multiple)", minval=0.8, maxval=3.0, step=0.05, group=GRP_RISK)
+tp1FloorR = input.float(0.20, "Tier-1 Unified Fee-Safe Breakeven Floor (+R, Spot & Option)", minval=0.0, maxval=0.60, step=0.05, group=GRP_RISK)
+tp2RatchetR = input.float(2.00, "Tier-2 Profit Floor Trigger (R Multiple)", minval=1.4, maxval=4.0, step=0.1, group=GRP_RISK)
+tp2FloorR = input.float(0.85, "Tier-2 Locked Profit Floor (+R Multiple)", minval=0.25, maxval=2.0, step=0.05, group=GRP_RISK)
+rrTarget2 = input.float(2.50, "Tier-3 Climax Chandelier Trigger (R Multiple)", minval=1.5, maxval=5.0, step=0.1, group=GRP_RISK)
+peakLock5mMult = input.float(1.8, "Climax Chandelier Trail (x 5m ATR)", minval=1.0, maxval=3.5, step=0.1, group=GRP_RISK)
+
+// 2. PURE SIMPLE-QUALIFIED TIMEFRAME CONSTANTS (100% V5 + V6 COMPATIBLE) & SYMBOL DETECTION
+rawTfSec = timeframe.isseconds ? timeframe.multiplier : timeframe.isminutes ? timeframe.multiplier * 60 : timeframe.isdaily ? 86400 : 300
+barSec = rawTfSec > 0 ? float(rawTfSec) : 300.0
+sSec = timeframe.multiplier <= 15 ? 1500 : timeframe.multiplier <= 30 ? 750 : 375
+sMinA = timeframe.multiplier == 1 ? 375 : timeframe.multiplier == 2 ? 188 : timeframe.multiplier == 3 ? 125 : 0
+sMinB = timeframe.multiplier <= 5 ? 75 : timeframe.multiplier <= 10 ? 38 : timeframe.multiplier <= 15 ? 25 : 12
+sMin = sMinA > 0 ? sMinA : sMinB
+barsSession = timeframe.isseconds ? sSec : timeframe.isminutes ? sMin : 12
+barsWeek = timeframe.isseconds ? 1500 : barsSession * 5
+tfScale5 = timeframe.isintraday ? math.sqrt(300.0 / barSec) : 1.0
+tfScale15 = timeframe.isintraday ? math.sqrt(900.0 / barSec) : 1.0
+upperSym = str.upper(syminfo.ticker)
+uDesc = str.upper(syminfo.description)
+uExch = str.upper(syminfo.prefix)
+nCh = str.length(upperSym)
+sfx = nCh >= 3 ? str.substring(upperSym, nCh - 2, nCh) : ""
+prv = nCh >= 3 ? str.substring(upperSym, nCh - 3, nCh - 2) : ""
+numOpt = (sfx == "CE" or sfx == "PE") and str.contains("0123456789", prv)
+dOpt = str.contains(uDesc, " CALL") or str.contains(uDesc, " PUT") or str.endswith(uDesc, " CE") or str.endswith(uDesc, " PE")
+isOptionChart = engineModeInput == "Option Chart (CE/PE)" ? true : engineModeInput == "Index / Futures" ? false : (syminfo.type == "option" or numOpt or dOpt)
+
+isBankNifty = str.contains(upperSym, "BANKNIFTY") or str.contains(upperSym, "NIFTYBANK") or str.contains(upperSym, "NSEBANK")
+isFinNifty = str.contains(upperSym, "FINNIFTY") or str.contains(upperSym, "CNXFIN") or str.contains(upperSym, "NIFTY_FIN")
+isSensex = str.contains(upperSym, "SENSEX") or str.contains(upperSym, "BSESN")
+isBankEx = str.contains(upperSym, "BANKEX")
+isNseBseSymbol = indianIndexMode and (uExch == "NSE" or uExch == "BSE" or str.contains(upperSym, "NIFTY") or isSensex or isBankEx or syminfo.currency == "INR")
+useIndianRules = indianIndexMode and timeframe.isintraday
+
+istHr = hour(time, "Asia/Kolkata")
+istMn = minute(time, "Asia/Kolkata")
+istMins = istHr * 60 + istMn
+istDayKey = year(time, "Asia/Kolkata") * 10000 + month(time, "Asia/Kolkata") * 100 + dayofmonth(time, "Asia/Kolkata")
+prevIstDay = nz(istDayKey[1], istDayKey)
+prevTimeMs = nz(time[1], time)
+dayChg = timeframe.change("D")
+prevCl = nz(close[1], close)
+prevCl10 = nz(close[10], close)
+prevHi = nz(high[1], high)
+prevLo = nz(low[1], low)
+isNewDay = dayChg or istDayKey != prevIstDay
+isSpliceGap = (bar_index > 0 ? (time - prevTimeMs) / 86400000.0 : 0.0) > 20.0
+dayOrGap = isNewDay or isSpliceGap
+rstBar = bar_index == 0 or isSpliceGap
+isSettleZone = useIndianRules and isNseBseSymbol and istMins >= 925
+isEodExit = useIndianRules and (isNseBseSymbol ? istMins >= 915 : istHr >= 15 and istMn >= 45)
+effSlMult = isOptionChart ? math.max(1.5, optSl5mMult * tfScale5) : timeframe.isintraday ? math.max(1.5, idxSl5mMult * tfScale5) : 2.2
+effLockMult = timeframe.isintraday ? math.max(1.1, peakLock5mMult * tfScale5) : 1.6
+effOptGamMin = (isBankNifty or isFinNifty or isBankEx) ? math.max(optGamMin, optMonthlyGamMin) : optGamMin
+effOptMinVol = (isFinNifty or isBankEx) ? math.max(optMin5mVol, optThinChainVol) : optMin5mVol
+
+// 3. GAP-PROOF VOLATILITY, EFFICIENCY RATIO, SESSION VWAP & SUPERTREND
+minFlr = math.max(syminfo.mintick * 10.0, close * 0.0001)
+rawBarRange = math.max(high - low, syminfo.mintick)
+idxBarRange = math.max(high - low, minFlr)
+fullTrueRange = math.max(high - low, math.max(math.abs(high - prevCl), math.abs(low - prevCl)))
+spkBar = useIndianRules and isNseBseSymbol and (barSec < 900.0 and istMins == 555 or istMins >= 925)
+var lastCleanRng = 0.0
+var intraAtr = 0.0
+var idxBase = 0.0
+var optAtr = 0.0
+if rstBar or not spkBar
+    lastCleanRng := idxBarRange
+cleanBarRange = spkBar ? math.max(lastCleanRng, minFlr) : idxBarRange
+alphaBase = 2.0 / (math.max(30.0, math.round(72000.0 / barSec)) + 1.0)
+intraAtr := rstBar ? cleanBarRange : (intraAtr * 13.0 + cleanBarRange) / 14.0
+idxBase := rstBar ? intraAtr : alphaBase * intraAtr + (1.0 - alphaBase) * idxBase
+optTr = bar_index == 0 or isNewDay ? rawBarRange : fullTrueRange
+optAtr := bar_index == 0 ? optTr : (optAtr * 13.0 + optTr) / 14.0
+volSafe = nz(volume, 0.0)
+activeOptBar = volSafe > 0.0 and high > low ? 1.0 : 0.0
+wkActiveFrac = nz(ta.sma(activeOptBar, barsWeek), 1.0)
+vol5mAvg = nz(ta.sma(volSafe, barsSession), 0.0) * (300.0 / barSec)
+deadBarFrac = nz(ta.sma(high == low ? 1.0 : 0.0, barsSession), 0.0)
+optBaseSma = nz(ta.sma(optAtr, 50), optAtr)
+vSma20 = ta.sma(volSafe, 20)
+erPath10 = nz(ta.sma(math.abs(close - prevCl), 10), 0.0) * 10.0
+atrVal = isOptionChart ? optAtr : intraAtr
+atrBaseline = isOptionChart ? optBaseSma : idxBase
+atr5mPct = atrVal * tfScale5 / math.max(close, syminfo.mintick) * 100.0
+volExp = nz(vSma20, 0.0) > 0.0 ? volSafe / vSma20 : 1.5
+erVal10 = bar_index >= 10 and erPath10 > 0.000001 ? math.abs(close - prevCl10) / erPath10 : 1.0
+
+var ema9 = 0.0
+var ema21 = 0.0
+var ema50 = 0.0
+var ema200 = 0.0
+ema9 := rstBar ? close : 0.2 * close + 0.8 * ema9
+ema21 := rstBar ? close : 2.0 / 22.0 * close + 20.0 / 22.0 * ema21
+ema50 := rstBar ? close : 2.0 / 51.0 * close + 49.0 / 51.0 * ema50
+ema200 := rstBar ? close : 2.0 / 201.0 * close + 199.0 / 201.0 * ema200
+ema50Lag5 = nz(ema50[5], ema50)
+
+rsiChg = isOptionChart and isNewDay ? 0.0 : close - prevCl
+gChg = math.max(rsiChg, 0.0)
+lChg = math.max(-rsiChg, 0.0)
+var avgGain = 0.0
+var avgLoss = 0.0
+avgGain := bar_index == 0 ? 0.0 : bar_index < 14 and not isOptionChart ? avgGain + gChg / 14.0 : (avgGain * 13.0 + gChg) / 14.0
+avgLoss := bar_index == 0 ? 0.0 : bar_index < 14 and not isOptionChart ? avgLoss + lChg / 14.0 : (avgLoss * 13.0 + lChg) / 14.0
+rsiVal = bar_index == 0 ? 50.0 : avgLoss == 0.0 ? 100.0 : 100.0 - 100.0 / (1.0 + avgGain / avgLoss)
+
+uOp = isOptionChart ? 0.0 : math.max(close - open, 0.0)
+dOp = isOptionChart ? 0.0 : math.max(open - close, 0.0)
+uMv = dayOrGap and timeframe.isintraday ? uOp : not isOptionChart and isSettleZone ? 0.0 : high - prevHi
+dMv = dayOrGap and timeframe.isintraday ? dOp : not isOptionChart and isSettleZone ? 0.0 : prevLo - low
+plusDm = uMv > dMv and uMv > 0.0 ? uMv : 0.0
+minusDm = dMv > uMv and dMv > 0.0 ? dMv : 0.0
+dmiTr = isOptionChart ? optTr : dayOrGap or isSettleZone ? cleanBarRange : fullTrueRange
+var smTr = 0.0
+var smPlus = 0.0
+var smMinus = 0.0
+var gapSafeAdx = 20.0
+smTr := bar_index == 0 and isOptionChart ? 0.0 : rstBar and not isOptionChart ? dmiTr : (smTr * 13.0 + dmiTr) / 14.0
+smPlus := bar_index == 0 and isOptionChart ? 0.0 : rstBar and not isOptionChart ? plusDm : (smPlus * 13.0 + plusDm) / 14.0
+smMinus := bar_index == 0 and isOptionChart ? 0.0 : rstBar and not isOptionChart ? minusDm : (smMinus * 13.0 + minusDm) / 14.0
+plusDi = bar_index == 0 and isOptionChart ? 20.0 : smTr > 0.0 ? 100.0 * smPlus / smTr : 0.0
+minusDi = bar_index == 0 and isOptionChart ? 20.0 : smTr > 0.0 ? 100.0 * smMinus / smTr : 0.0
+dxRaw = plusDi + minusDi > 0.0001 ? 100.0 * math.abs(plusDi - minusDi) / (plusDi + minusDi) : 0.0
+gapSafeAdx := rstBar ? 20.0 : (gapSafeAdx * 13.0 + dxRaw) / 14.0
+adxLag1 = nz(gapSafeAdx[1], 20.0)
+
+mE = isOptionChart ? math.max(1.2, 2.0 * tfScale5) : 2.2
+mT = isOptionChart ? math.max(1.6, optTrail5mMult * tfScale5) : timeframe.isintraday ? math.max(2.0, idxTrail15mMult * tfScale15) : 2.6
+rawUpE = hl2 - mE * atrVal
+rawDnE = hl2 + mE * atrVal
+rawUpT = hl2 - mT * atrVal
+rawDnT = hl2 + mT * atrVal
+var pupE = 0.0
+var pdnE = 0.0
+var stEntryDir = 1
+var pupT = 0.0
+var pdnT = 0.0
+var stTrailDir = 1
+if rstBar
+    pupE := rawUpE
+    pdnE := rawDnE
+    stEntryDir := 1
+    pupT := rawUpT
+    pdnT := rawDnT
+    stTrailDir := 1
+else
+    stUpE = prevCl > pupE ? math.max(rawUpE, pupE) : rawUpE
+    stDnE = prevCl < pdnE ? math.min(rawDnE, pdnE) : rawDnE
+    stEntryDir := stEntryDir == -1 and close > pdnE ? 1 : stEntryDir == 1 and close < pupE ? -1 : stEntryDir
+    pupE := stUpE
+    pdnE := stDnE
+    stUpT = prevCl > pupT ? math.max(rawUpT, pupT) : rawUpT
+    stDnT = prevCl < pdnT ? math.min(rawDnT, pdnT) : rawDnT
+    stTrailDir := stTrailDir == -1 and close > pdnT ? 1 : stTrailDir == 1 and close < pupT ? -1 : stTrailDir
+    pupT := stUpT
+    pdnT := stDnT
+stTrailLine = stTrailDir == 1 ? pupT : pdnT
+
+vwapWeight = isOptionChart ? rawBarRange : volSafe > 0.0 ? volSafe : cleanBarRange
+var cumPV = 0.0
+var cumW = 0.0
+if dayOrGap or bar_index == 0
+    cumPV := hlc3 * vwapWeight
+    cumW := vwapWeight
+else if isOptionChart or not isSettleZone
+    cumPV += hlc3 * vwapWeight
+    cumW += vwapWeight
+indVwap = cumW > 0.0 ? cumPV / cumW : hlc3
+vwSmaNum = ta.sma(hlc3 * volSafe, barsWeek)
+vwSmaDen = ta.sma(volSafe, barsWeek)
+sessionVwap = useIndianRules ? indVwap : nz(vwSmaNum / math.max(vwSmaDen, 0.000001), hlc3)
+vwapLag3 = nz(sessionVwap[3], sessionVwap)
+
+[secPdh, secPdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+pastOpenSpike = barSec >= 900.0 or istMins > 555
+okPdBar = isOptionChart ? true : not isSettleZone and (barSec >= 900.0 or istMins > 555)
+var float prevCleanDh = na
+var float prevCleanDl = na
+var float curCleanDh = na
+var float curCleanDl = na
+var float swpHigh = na
+var float swpLow = na
+if dayOrGap or bar_index == 0
+    if isSpliceGap
+        prevCleanDh := na
+        prevCleanDl := na
+    else if bar_index > 0 and not na(curCleanDh)
+        prevCleanDh := curCleanDh
+        prevCleanDl := curCleanDl
+    curCleanDh := okPdBar ? high : na
+    curCleanDl := okPdBar ? low : na
+    swpHigh := pastOpenSpike ? high : na
+    swpLow := pastOpenSpike ? low : na
+else
+    if okPdBar
+        curCleanDh := na(curCleanDh) ? high : math.max(curCleanDh, high)
+        curCleanDl := na(curCleanDl) ? low : math.min(curCleanDl, low)
+    if pastOpenSpike
+        swpHigh := na(swpHigh) ? high : math.max(swpHigh, high)
+        swpLow := na(swpLow) ? low : math.min(swpLow, low)
+pdhPrice = timeframe.isintraday and not na(prevCleanDh) ? prevCleanDh : secPdh
+pdlPrice = timeframe.isintraday and not na(prevCleanDl) ? prevCleanDl : secPdl
+
+// 4. BROKER ORDER EMULATOR EXECUTION ENGINE (ZERO ENTRY-BAR UNPROTECTED WINDOW)
+var dayStartBar = 0
+var currentDayId = 0
+var float orbHigh = na
+var float orbLow = na
+var orbReady = false
+var tradesToday = 0
+var lastClosedBar = -999
+var trDayId = -1
+var tp1Done = false
+var float trRisk = na
+var float trTrailSl = na
+var float trPeak = na
+
+if isNewDay or bar_index == 0
+    dayStartBar := bar_index
+    currentDayId += 1
+    orbHigh := na
+    orbLow := na
+    orbReady := false
+    tradesToday := 0
+if timeframe.isintraday
+    inOrbWin = isNseBseSymbol ? istMins >= 555 and istMins < 570 : bar_index - dayStartBar < 3
+    if inOrbWin
+        orbHigh := na(orbHigh) ? high : math.max(orbHigh, high)
+        orbLow := na(orbLow) ? low : math.min(orbLow, low)
+    else if not na(orbHigh) and not na(orbLow)
+        orbReady := true
+
+posNow = strategy.position_size
+posPrev = nz(strategy.position_size[1], 0)
+inPos = posNow != 0
+wasInPos = posPrev != 0
+if wasInPos and not inPos
+    lastClosedBar := bar_index
+    tp1Done := false
+
+if inPos
+    isL = posNow > 0
+    avgEp = strategy.position_avg_price
+    if not wasInPos
+        trTrailSl := isL ? avgEp - trRisk : avgEp + trRisk
+        trPeak := isL ? high : low
+        tp1Done := false
+        trDayId := currentDayId
+    else
+        trPeak := isL ? math.max(trPeak, high) : math.min(trPeak, low)
+    tp1Px = isL ? avgEp + trRisk * rrTarget1 : avgEp - trRisk * rrTarget1
+    if not tp1Done and (isL ? high >= tp1Px : low <= tp1Px)
+        tp1Done := true
+        trTrailSl := isL ? math.max(trTrailSl, avgEp + tp1FloorR * trRisk) : math.min(trTrailSl, avgEp - tp1FloorR * trRisk)
+    stOkT = not isOptionChart or stTrailDir == (isL ? 1 : -1)
+    nextStT = isL ? math.max(trTrailSl, stTrailLine) : math.min(trTrailSl, stTrailLine)
+    trTrailSl := stOkT ? nextStT : trTrailSl
+    favMove = isL ? trPeak - avgEp : avgEp - trPeak
+    if favMove >= tp2RatchetR * trRisk
+        trTrailSl := isL ? math.max(trTrailSl, avgEp + tp2FloorR * trRisk) : math.min(trTrailSl, avgEp - tp2FloorR * trRisk)
+    if favMove >= rrTarget2 * trRisk
+        trTrailSl := isL ? math.max(trTrailSl, trPeak - effLockMult * atrVal) : math.min(trTrailSl, trPeak + effLockMult * atrVal)
+    if isEodExit or currentDayId != trDayId
+        strategy.close_all(comment="EOD Square-Off")
+    else
+        fromId = isL ? "APEX_LONG" : "APEX_SHORT"
+        if not isOptionChart and idxPartialPct > 0.0 and not tp1Done
+            strategy.exit("TP1", from_entry=fromId, qty_percent=idxPartialPct, limit=tp1Px, stop=trTrailSl)
+        else
+            strategy.cancel("TP1")
+        strategy.exit("RUNNER", from_entry=fromId, stop=trTrailSl)
+
+eph = ta.pivothigh(high, swingLen, swingLen)
+epl = ta.pivotlow(low, swingLen, swingLen)
+optEph = ta.pivothigh(high, 4, 4)
+var float prevStructHigh = na
+var float prevStructLow = na
+var float prevOptHigh = na
+priorSwingHigh = prevStructHigh
+priorSwingLow = prevStructLow
+priorOptHigh = prevOptHigh
+if not na(eph)
+    prevStructHigh := eph
+if not na(epl)
+    prevStructLow := epl
+if not na(optEph)
+    prevOptHigh := optEph
+
+hasValidPd = not na(pdhPrice) and not na(pdlPrice)
+inMornWin = istMins >= 570 and istMins < 615
+mStart = useMornShield ? 615 : 570
+timeBullOk = not useIndianRules or not isNseBseSymbol or not isNewDay and istMins <= 875 and (istMins >= mStart or inMornWin and not na(pdhPrice) and close > pdhPrice)
+timeBearOk = not useIndianRules or not isNseBseSymbol or not isNewDay and istMins <= 875 and (istMins >= mStart or inMornWin and not na(pdlPrice) and close < pdlPrice)
+diBOk = not timeframe.isintraday or plusDi - minusDi >= minDiSpread
+diSOk = not timeframe.isintraday or minusDi - plusDi >= minDiSpread
+vOkOpt = vol5mAvg >= effOptMinVol or volSafe == 0.0 and not isNseBseSymbol
+gamOk = wkActiveFrac >= optWkMin and vOkOpt and atr5mPct >= effOptGamMin and atr5mPct <= optGamMax and deadBarFrac <= optMaxDeadFrac and close >= optMinPremium and volExp >= optVolSurge and atrVal >= optRelVolMin * atrBaseline
+vwUp = close > sessionVwap and sessionVwap >= vwapLag3
+vwDn = close < sessionVwap and sessionVwap <= vwapLag3
+e50Up = not useEma50Slope or ema50 >= ema50Lag5
+e50Dn = not useEma50Slope or ema50 <= ema50Lag5
+eBull = ema9 > ema21 and ema21 > ema50 and e50Up
+eBear = ema9 < ema21 and ema21 < ema50 and e50Dn
+iVolOk = atrVal >= idxRelVolMin * atrBaseline and atr5mPct >= idxGamMin
+bPdExp = iVolOk and hasValidPd and (close > pdhPrice or not na(swpLow) and swpLow < pdlPrice and close > pdlPrice)
+sPdExp = iVolOk and hasValidPd and (close < pdlPrice or not na(swpHigh) and swpHigh > pdhPrice and close < pdhPrice)
+bullReg = isOptionChart ? gamOk and vwUp and stEntryDir == 1 and eBull and orbReady and close > orbHigh and rsiVal >= 58.0 and rsiVal <= optRsiCap and diBOk : close > ema200 and bPdExp and vwUp and stEntryDir == 1 and eBull and orbReady and close > orbHigh and rsiVal >= 58.0 and diBOk
+bearReg = isOptionChart ? allowOptShort and gamOk and vwDn and stEntryDir == -1 and eBear and orbReady and close < orbLow and rsiVal <= 42.0 and diSOk : close < ema200 and sPdExp and vwDn and stEntryDir == -1 and eBear and orbReady and close < orbLow and rsiVal <= 42.0 and diSOk
+
+candleRange = high - low
+bodySize = math.abs(close - open)
+clvBull = candleRange > 0.0 ? math.min(1.0, math.max(0.0, (close - low) / candleRange)) : 0.5
+clvBear = candleRange > 0.0 ? math.min(1.0, math.max(0.0, (high - close) / candleRange)) : 0.5
+bPiv = isOptionChart ? priorOptHigh : priorSwingHigh
+orbOk = not useOrbFilter or not timeframe.isintraday or not na(orbHigh) and orbHigh - orbLow <= maxOrb15mMult * tfScale15 * atrVal
+coilOk = not timeframe.isintraday or adxLag1 <= maxPriorAdx
+erOk = isOptionChart or not timeframe.isintraday or erVal10 >= minErRatio
+warm = bar_index >= (isOptionChart ? 55 : 205) or not timeframe.isintraday
+canE = not inPos and bar_index > lastClosedBar + cooldownBars and tradesToday < maxTradesPerDay and warm and orbOk and coilOk and erOk
+buySig = canE and timeBullOk and bullReg and not na(bPiv) and close > bPiv and close > open and bodySize >= 0.60 * atrVal and clvBull >= minClvRatio
+sellSig = canE and timeBearOk and bearReg and not na(priorSwingLow) and close < priorSwingLow and close < open and bodySize >= 0.60 * atrVal and clvBear >= minClvRatio and not buySig
+
+if buySig or sellSig
+    rDist = effSlMult * atrVal
+    rawLoss = int(math.round(rDist / syminfo.mintick))
+    rawTp1 = int(math.round(rDist * rrTarget1 / syminfo.mintick))
+    lossTicks = rawLoss > 1 ? rawLoss : 1
+    tp1Ticks = rawTp1 > 1 ? rawTp1 : 1
+    trRisk := rDist
+    tradesToday += 1
+    if buySig
+        strategy.entry("APEX_LONG", strategy.long)
+        if not isOptionChart and idxPartialPct > 0.0
+            strategy.exit("TP1", from_entry="APEX_LONG", qty_percent=idxPartialPct, profit=tp1Ticks, loss=lossTicks)
+        strategy.exit("RUNNER", from_entry="APEX_LONG", loss=lossTicks)
+    else
+        strategy.entry("APEX_SHORT", strategy.short)
+        if not isOptionChart and idxPartialPct > 0.0
+            strategy.exit("TP1", from_entry="APEX_SHORT", qty_percent=idxPartialPct, profit=tp1Ticks, loss=lossTicks)
+        strategy.exit("RUNNER", from_entry="APEX_SHORT", loss=lossTicks)
+
+plot(sessionVwap, title="Apex Session VWAP", color=close >= sessionVwap ? color.new(#00E676, 20) : color.new(#FF5252, 20), linewidth=2)
+plot(inPos ? trTrailSl : na, title="Apex Strategy Trail SL", color=#FFD54F, style=plot.style_linebr, linewidth=2)

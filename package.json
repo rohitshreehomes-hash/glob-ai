@@ -1,0 +1,11 @@
+{
+  "name": "sot-smc-pro-v6-terminal",
+  "version": "6.0.0",
+  "private": true,
+  "description": "S.O.T Academy SMC Pro v6 Interactive Live Chart & 7-Layer Institutional Audit Terminal",
+  "main": "preview/server.js",
+  "scripts": {
+    "start": "node preview/server.js",
+    "dev": "node preview/server.js"
+  }
+}
