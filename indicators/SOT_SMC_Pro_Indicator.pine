@@ -1,5 +1,5 @@
 //@version=6
-indicator("S.O.T SMC Pro v9.1 [Apex Early Trigger + Range Engine]", shorttitle="S.O.T Apex v9.1", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+indicator("S.O.T SMC Pro v9 [Apex Institutional Quantum Engine]", shorttitle="S.O.T Apex v9", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
 
 // =============================================================================
 // 1. INPUT SETTINGS - S.O.T ACADEMY APEX v9 (PREDICTIVE + RANGE + SEBI GAMMA ENGINE)
@@ -940,7 +940,7 @@ else if curTrend == -1 and not currLowConf and low < currLow
     currLowPiv := false
 
 // =============================================================================
-// 6. APEX v9 DUAL SNIPER ENTRY ENGINE + PRE-SIGNAL RADAR + OB/FVG POIs + 16-ROW HUD
+// 6. APEX v9 DUAL SNIPER ENTRY ENGINE + PRE-SIGNAL RADAR + OB/FVG POIs + 17-ROW HUD
 // =============================================================================
 bool hasValidPd = not na(pdhPrice) and not na(pdlPrice)
 float clvBull = candleRange > 0.0 ? math.min(1.0, math.max(0.0, (close - low) / candleRange)) : 0.5

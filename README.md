@@ -1,15 +1,15 @@
-# ⚡ S.O.T SMC Pro v9.1 — `[Apex Early Trigger + Sideways Range Engine]` (`TradingView Pine Script v6`)
+# ⚡ S.O.T SMC Pro v9 — `[Apex Institutional Quantum Engine + Built-In Early Trigger]` (`TradingView Pine Script v6`)
 
-> **v9.1 fixes the one thing that mattered most in live use: the signal was LATE.** The v8/v9 entry waited for a *confirmed* swing break (`swingLen = 3` ⇒ the pivot is `3` bars old before it is even considered), so the label often printed after 3–5 bars of the move had already happened. v9.1 adds a **Micro-Break Early Trigger** that fires on the first qualifying close through the `3/5/8`-bar extreme (optionally led by up to `0.60 ATR`), guarded by VWAP side, EMA-9/21 stack, DI spread, 200-EMA bias, body, volume expansion, CLV and Efficiency Ratio — plus a `12`-bar block that stops the late pivot from re-entering the same move.
+> **This is the same indicator you already use — nothing renamed, nothing to swap. It fixes the one thing that mattered most in live use: the signal was LATE.** The v8/v9 entry waited for a *confirmed* swing break (`swingLen = 3` ⇒ the pivot is `3` bars old before it is even considered), so the label often printed after 3–5 bars of the move had already happened. The **Micro-Break Early Trigger is built into this same indicator**: it fires on the first qualifying close through the `3/5/8`-bar extreme (optionally led by up to `0.60 ATR`), guarded by VWAP side, EMA-9/21 stack, DI spread, 200-EMA bias, body, volume expansion, CLV and Efficiency Ratio — plus a `12`-bar block that stops the late pivot from re-entering the same move.
 
-> Verification on the final `1,518`-line file: **Strict Pine v6 Full-AST Type / Qualifier / `[k]`-in-UDF / Outer-Write / Visual-Signature / Duplicate-Shadowing checker → `0` diagnostics (canary control `7`)**, **PineForge 4-pass compiler → `0` errors (`118` warnings, `61` notes, all informational)**, **native `g++ -std=c++17 -fsyntax-only` → `rc = 0` over `6,558` generated C++ lines**, **`pinetools` Oct-2026 limits → `plot 9`, `request 2`, `table 3`, `IL 27,462–41,222`, `main 40,163`, `max if 3,763` — `[total ok, main ok, if ok]`, `code 18,726` tokens, `strings 15,117 B`, `0` stateful UDFs**, **`PineTS 0.13.0` bar-by-bar VM → `0` runtime errors, `15` plot streams, `3` tables, `2x17` HUD**.
+> Verification on the final `1,518`-line file: **Strict Pine v6 Full-AST Type / Qualifier / `[k]`-in-UDF / Outer-Write / Visual-Signature / Duplicate-Shadowing checker → `0` diagnostics (canary control `7`)**, **PineForge 4-pass compiler → `0` errors (`118` warnings, `61` notes, all informational)**, **native `g++ -std=c++17 -fsyntax-only` → `rc = 0` over `6,558` generated C++ lines**, **`pinetools` Oct-2026 limits → `plot 9`, `request 2`, `table 3`, `IL 27,462–41,222`, `main 40,163`, `max if 3,763` — `[total ok, main ok, if ok]`, `code 18,726` tokens, `strings 15,117 B`, `0` stateful UDFs**, **`PineTS 0.13.0` bar-by-bar VM → `0` runtime errors, `15` plot streams, `3` tables, `2x17` HUD**, and the **byte-identical shipped file** (only the sandbox-missing `syminfo.*` metadata literals supplied) replayed on real NIFTY 5m for 2022–2025 reproduces **every** number in the table below bar-for-bar.
 
 ---
 
-## ⚡ v9.1 — Early Trigger Engine ("jaldi buy/sell, zyada movement")
+## ⚡ Early Trigger Engine — built into the same S.O.T SMC Pro v9 indicator ("jaldi buy/sell, zyada movement")
 
 ### The problem it fixes
-| Layer | v9 (old) | v9.1 (new) |
+| Layer | Pivot Break Only (old behaviour) | Early Trigger (built-in, default) |
 | :--- | :--- | :--- |
 | Trigger source | `close > priorSwingHigh` — the pivot is only *confirmed* `swingLen (3)` bars after it prints | `close >= highest(high, 3/5/8)[1] - 0.20 ATR` — the first qualifying close through the recent extreme |
 | Typical delay | 3–6 bars after the actual turn | 0–1 bar |
@@ -20,14 +20,14 @@ Every early entry must satisfy **all** of these on the signal bar:
 `close` on the correct side of VWAP · `EMA 9 > 21` (bearish mirror) · `DI+ > DI-` · `200-EMA` bias · `body >= 0.30 ATR` · `volume >= 1.10x` 20-SMA · `CLV >= 0.58` · `Efficiency Ratio >= 0.18` · **not** in chop regime · Indian session/ORB/cooldown/day-cap still enforced · option charts still need the gamma/liquidity shield.
 
 ### What you see on the chart
-- **Two live trigger rails**: `v9.1 Early CE Trigger Level` (cyan) and `v9.1 Early PE Trigger Level` (pink) — you can see the exact price that will flip the signal *before* it happens.
+- **Two live trigger rails** (drawn by the same indicator): `v9.1 Early CE Trigger Level` (cyan) and `v9.1 Early PE Trigger Level` (pink) — you can see the exact price that will flip the signal *before* it happens.
 - Signal labels tagged **`EARLY`** (`EARLY Buy CE [S+ 9x%]`) so they are distinguishable from the classic pivot labels.
 - HUD row 16: `ON | 5-Bar Break | N fired | CE > 24,xxx`.
 - Two new alerts: **EARLY BUY CE** / **EARLY BUY PE (Micro Break, Jaldi Entry)**.
 - The old signal is still there — switch `Early Trigger Mode` to **Off (Pivot Break Only)** to get exactly v9 behaviour.
 
 ### Measured on real NIFTY 5m (18,504 bars/year, default inputs, same feed, SL-first)
-| Year | v9 (Pivot Break) | v9.1 (Early Trigger) | Net points gain |
+| Year | Pivot Break Only (old) | Early Trigger ON (new default) | Net points gain |
 | :--- | :--- | :--- | :---: |
 | 2022 | 53 Tr · WR 45.3% · PF 1.36 · **+506.4p** | 265 Tr · WR 44.2% · PF 1.32 · **+1,619.5p** | **3.2×** |
 | 2023 | 22 Tr · WR 59.1% · PF 1.72 · **+232.8p** | 265 Tr · WR 49.8% · PF 1.75 · **+2,394.3p** | **10.3×** |
