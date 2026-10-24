@@ -534,7 +534,7 @@ def main():
 
     agg = run_multi(seeds, p)
     d0 = agg["per_seed"][0]
-    print("DEFAULT CONFIG (5 seeds, median)")
+    print(f"DEFAULT CONFIG ({len(seeds)} seed(s), median)")
     print("-" * 78)
     print(f"  trades            : {agg['trades']:.0f}")
     print(f"  win rate          : {agg['win_rate']:.1f}%")
@@ -567,7 +567,7 @@ def main():
     print()
 
     # ── parameter sweep ──────────────────────────────────────────────────────
-    print("PARAMETER SWEEP (median of 5 seeds each)")
+    print(f"PARAMETER SWEEP (median of {len(seeds)} seed(s) each)")
     print("-" * 78)
     print(f"{'config':<34}{'trades':>8}{'win%':>8}{'pnl':>10}{'PF':>8}{'maxDD':>9}")
     sweep = []
