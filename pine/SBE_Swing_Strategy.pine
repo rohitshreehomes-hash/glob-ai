@@ -1,0 +1,187 @@
+//@version=6
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SBE SWING STRATEGY  —  SALE / BUY / EXIT (backtest engine)      (v1.0)
+// ───────────────────────────────────────────────────────────────────────────────
+//  Ye wahi logic hai jo "SBE_Swing_Indicator.pine" me hai, bas backtest ke liye.
+//  Entries/exits signal bar ke CLOSE par fill hote hain (process_orders_on_close).
+//
+//  P&L NOTE : default qty = 1, commission/slippage = 0  ->  result INDEX POINTS me.
+//             NIFTY lot (75) ke liye Settings > Properties > Order size = 75 karo,
+//             phir P&L rupees me aa jayega (approx; commission alag se set karna).
+//
+//  Ye financial advice nahi hai. Pehle paper trade / replay par test karo.
+// ═══════════════════════════════════════════════════════════════════════════════
+strategy("SBE Swing Strategy", "SBE Strat", overlay = true, initial_capital = 1000000, default_qty_type = strategy.fixed, default_qty_value = 1, commission_type = strategy.commission.percent, commission_value = 0, slippage = 0, process_orders_on_close = true, calc_on_every_tick = false)
+
+// ─────────────────────────────── INPUTS ──────────────────────────────────────
+string gSwing = "② Swing"
+int    pivLen = input.int(5, "Pivot length (bars)", minval = 2, maxval = 50, group = gSwing)
+
+string gTrend    = "③ Trend filter"
+string trendMode = input.string("Off", "Filter", options = ["Off", "EMA fast/slow", "Price vs EMA", "Structure (HH/LL)"], group = gTrend)
+int    emaFastLen = input.int(21, "Fast EMA", minval = 1, group = gTrend)
+int    emaSlowLen = input.int(50, "Slow EMA", minval = 2, group = gTrend)
+
+string gExit       = "④ Exits"
+bool   exitOnSwing = input.bool(true, "Exit on opposite swing", group = gExit)
+bool   exitOnEma   = input.bool(false, "Exit on EMA cross", group = gExit)
+bool   useTrail    = input.bool(false, "ATR trailing stop", group = gExit)
+int    atrLen      = input.int(14, "ATR length", minval = 1, group = gExit)
+float  trailMult   = input.float(2.0, "ATR multiplier", minval = 0.1, step = 0.1, group = gExit)
+bool   allowReverse = input.bool(false, "Reverse on same swing", group = gExit)
+
+string gBase      = "⑤ Side base"
+bool   detectBase = input.bool(true, "Detect side base", group = gBase)
+int    baseLen    = input.int(12, "Lookback (bars)", minval = 5, maxval = 100, group = gBase)
+float  baseMult   = input.float(2.0, "Max height (× ATR)", minval = 0.2, step = 0.1, group = gBase)
+bool   tradeBase  = input.bool(true, "Trade base breakout", group = gBase)
+int    baseExpiry = input.int(30, "Breakout valid for (bars)", minval = 1, maxval = 200, group = gBase)
+
+string gSess   = "⑥ Session"
+bool   useSess = input.bool(false, "Signal only inside session", group = gSess)
+string sessStr = input.session("0915-1530", "Session", group = gSess)
+string sessTz  = input.string("Asia/Kolkata", "Timezone", group = gSess)
+
+// ───────────────────────────── CORE SERIES ───────────────────────────────────
+float atr   = ta.atr(atrLen)
+float emaF  = ta.ema(close, emaFastLen)
+float emaS  = ta.ema(close, emaSlowLen)
+bool  xUp   = ta.crossover(close, emaF)
+bool  xDn   = ta.crossunder(close, emaF)
+bool  inSes = not useSess or not na(time(timeframe.period, sessStr, sessTz))
+float hiN   = ta.highest(high, baseLen)
+float loN   = ta.lowest(low, baseLen)
+
+float ph    = ta.pivothigh(high, pivLen, pivLen)
+float pl    = ta.pivotlow(low, pivLen, pivLen)
+bool  newPH = not na(ph)
+bool  newPL = not na(pl)
+
+var float lastSH = na
+var float lastSL = na
+var float prevSH = na
+var float prevSL = na
+
+if newPH
+    prevSH := lastSH
+    lastSH := ph
+if newPL
+    prevSL := lastSL
+    lastSL := pl
+
+bool structBull = na(prevSL) or (newPL and pl > prevSL)
+bool structBear = na(prevSH) or (newPH and ph < prevSH)
+
+bool bullOk = switch trendMode
+    "EMA fast/slow"     => emaF > emaS
+    "Price vs EMA"      => close > emaS
+    "Structure (HH/LL)" => structBull
+    =>                     true
+
+bool bearOk = switch trendMode
+    "EMA fast/slow"     => emaF < emaS
+    "Price vs EMA"      => close < emaS
+    "Structure (HH/LL)" => structBear
+    =>                     true
+
+// ─────────────────────────────── SIDE BASE ───────────────────────────────────
+bool tight = detectBase and (hiN - loN) <= baseMult * atr
+
+var box   baseBox   = na
+var float baseTop   = na
+var float baseBot   = na
+var int   baseCnt   = 0
+var bool  baseArmed = false
+var int   baseEnd   = na
+
+if tight
+    baseCnt += 1
+    if baseCnt == baseLen
+        baseTop   := hiN
+        baseBot   := loN
+        baseArmed := false
+        baseBox   := box.new(bar_index - baseLen + 1, baseTop, bar_index, baseBot, border_color = color.new(#787b86, 20), border_width = 1, bgcolor = color.new(#787b86, 88), text = "SIDE BASE", text_size = size.small, text_color = #787b86, text_halign = text.align_center, text_valign = text.align_center)
+    if baseCnt > baseLen and not na(baseBox)
+        baseTop := math.max(baseTop, high)
+        baseBot := math.min(baseBot, low)
+        box.set_top(baseBox, baseTop)
+        box.set_bottom(baseBox, baseBot)
+        box.set_right(baseBox, bar_index)
+else
+    if baseCnt >= baseLen
+        baseArmed := true
+        baseEnd   := bar_index - 1
+    baseCnt := 0
+    baseBox := na
+
+bool baseUp      = baseArmed and not na(baseTop) and close > baseTop
+bool baseDn      = baseArmed and not na(baseBot) and close < baseBot
+bool baseExpired = baseArmed and not na(baseEnd) and (bar_index - baseEnd) > baseExpiry
+
+if baseUp or baseDn or baseExpired
+    baseArmed := false
+
+// ────────────────────────────── SIGNAL STATE ─────────────────────────────────
+var int    pos     = 0
+var float  entryPx = na
+var float  stopPx  = na
+
+bool saleSig = false
+bool buySig  = false
+bool exitSig = false
+bool didExit = false
+
+int posAtStart = pos
+
+// ──────────────────────────────── EXITS ──────────────────────────────────────
+bool shortExit = pos == -1 and ((exitOnSwing and newPL) or (exitOnEma and xUp) or (useTrail and not na(stopPx) and high >= stopPx))
+bool longExit  = pos ==  1 and ((exitOnSwing and newPH) or (exitOnEma and xDn) or (useTrail and not na(stopPx) and low  <= stopPx))
+
+if shortExit or longExit
+    pos     := 0
+    entryPx := na
+    stopPx  := na
+    exitSig := true
+    didExit := true
+
+// ──────────────────────────────── ENTRIES ────────────────────────────────────
+bool canEnter   = pos == 0 and (allowReverse or not didExit)
+bool swingShort = newPH and bearOk and inSes
+bool swingLong  = newPL and bullOk and inSes
+bool baseLong   = tradeBase and baseUp and inSes
+bool baseShort  = tradeBase and baseDn and inSes
+
+if canEnter and pos == 0 and (swingShort or baseShort)
+    pos     := -1
+    entryPx := close
+    stopPx  := useTrail ? high + trailMult * atr : na
+    saleSig := true
+    strategy.entry("S", strategy.short, comment = "SALE")
+
+if canEnter and pos == 0 and (swingLong or baseLong)
+    pos     := 1
+    entryPx := close
+    stopPx  := useTrail ? low - trailMult * atr : na
+    buySig  := true
+    strategy.entry("L", strategy.long, comment = "BUY")
+
+if exitSig
+    if posAtStart == 1
+        strategy.close("L", comment = "EXIT")
+    else if posAtStart == -1
+        strategy.close("S", comment = "EXIT")
+
+// ─────────────────────────────── TRAIL STOP ──────────────────────────────────
+if pos == -1 and useTrail
+    stopPx := na(stopPx) ? high + trailMult * atr : math.min(stopPx, high + trailMult * atr)
+if pos == 1 and useTrail
+    stopPx := na(stopPx) ? low - trailMult * atr : math.max(stopPx, low - trailMult * atr)
+
+if pos != 0 and useTrail
+    strategy.exit("X", from_entry = pos == 1 ? "L" : "S", stop = stopPx, comment = "TRAIL")
+
+// ────────────────────────────────── PLOTS ────────────────────────────────────
+plot(emaF, "EMA fast", color.new(#42a5f5, 0), 1)
+plot(emaS, "EMA slow", color.new(#ab47bc, 0), 2)
+plotshape(buySig,  "BUY",  shape.labelup,   location.belowbar, color.new(#26a69a, 0), text = "BUY",  textcolor = color.white, size = size.small)
+plotshape(saleSig, "SALE", shape.labeldown, location.abovebar, color.new(#ef5350, 0), text = "SALE", textcolor = color.white, size = size.small)

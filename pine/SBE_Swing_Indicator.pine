@@ -1,0 +1,301 @@
+//@version=6
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SALE • BUY • EXIT  —  Swing + Side Base          (v1.0)
+// ───────────────────────────────────────────────────────────────────────────────
+//  Ye indicator chart par manually draw kiye jaane wale points auto mark karta hai:
+//
+//     🔴 SALE      = confirmed swing HIGH  (short setup)
+//     🟠 EXIT      = short cover on swing LOW / long exit on swing HIGH
+//     ⬜ SIDE BASE = tight consolidation box (auto expand / auto expire)
+//     🟢 BUY       = confirmed swing LOW (long setup) ya base ka upside breakout
+//     🔴 SALE      = base ka downside breakout
+//
+//  • NON-REPAINTING : pivot "Pivot length" bars baad confirm hota hai. Signal ek
+//    baar print hone ke baad kabhi gayab/change nahi hota. Historical chart par
+//    label pivot ki bar par dikhta hai (kyunki wahi actual swing tha).
+//  • ALERT-READY    : SALE / BUY / EXIT ke liye readymade alertcondition +
+//    dynamic alert() call (webhook / app notification ke liye).
+//  • State aware    : jab tak position open hai, naya BUY/SALE nahi aata —
+//    pehle EXIT hota hai (reverse option ON karne par ek hi swing par palat jayega).
+// ═══════════════════════════════════════════════════════════════════════════════
+indicator("SALE • BUY • EXIT — Swing + Side Base", "SBE Swing", overlay = true, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 200)
+
+// ─────────────────────────────── ① STYLE ─────────────────────────────────────
+string gStyle    = "① Style"
+color  cSale     = input.color(#ef5350, "SALE",  inline = "c1", group = gStyle)
+color  cBuy      = input.color(#26a69a, "BUY",   inline = "c1", group = gStyle)
+color  cExit     = input.color(#ffa726, "EXIT",  inline = "c1", group = gStyle)
+color  cBase     = input.color(#787b86, "BASE",  inline = "c2", group = gStyle)
+string lblSizeIn = input.string("normal", "Label size", options = ["tiny", "small", "normal", "large"], inline = "c3", group = gStyle)
+bool   showPx    = input.bool(false, "Price in label", inline = "c3", group = gStyle)
+bool   showTable = input.bool(true, "Info table", group = gStyle)
+
+string lblSz = switch lblSizeIn
+    "tiny"  => size.tiny
+    "small" => size.small
+    "large" => size.large
+    =>        size.normal
+
+// ─────────────────────────────── ② SWING ─────────────────────────────────────
+string gSwing = "② Swing"
+int    pivLen = input.int(5, "Pivot length (bars)", minval = 2, maxval = 50, group = gSwing, tooltip = "Swing high/low confirm karne ke liye left+right bars. Bada = major swings, chhota = zyada signals.")
+bool   showZZ = input.bool(true, "Zig-zag swing lines", group = gSwing)
+color  zzCol  = input.color(#ffb74d, "Zig-zag colour", group = gSwing)
+
+// ──────────────────────────── ③ TREND FILTER ─────────────────────────────────
+string gTrend    = "③ Trend filter"
+string trendMode = input.string("Off", "Filter", options = ["Off", "EMA fast/slow", "Price vs EMA", "Structure (HH/LL)"], group = gTrend, tooltip = "Off = har swing. EMA fast/slow = sirf trend direction me. Price vs EMA = slow EMA ke upar sirf BUY. Structure = higher-low me BUY, lower-high me SALE.")
+int    emaFastLen = input.int(21, "Fast EMA", minval = 1, group = gTrend)
+int    emaSlowLen = input.int(50, "Slow EMA", minval = 2, group = gTrend)
+bool   showEma    = input.bool(true, "Plot EMAs", group = gTrend)
+
+// ──────────────────────────────── ④ EXITS ────────────────────────────────────
+string gExit       = "④ Exits"
+bool   exitOnSwing = input.bool(true, "Exit on opposite swing", group = gExit, tooltip = "Short open hai to swing LOW par EXIT, long open hai to swing HIGH par EXIT.")
+bool   exitOnEma   = input.bool(false, "Exit on EMA cross", group = gExit)
+bool   useTrail    = input.bool(false, "ATR trailing stop", group = gExit)
+int    atrLen      = input.int(14, "ATR length", minval = 1, group = gExit)
+float  trailMult   = input.float(2.0, "ATR multiplier", minval = 0.1, step = 0.1, group = gExit)
+bool   allowReverse = input.bool(false, "Reverse on same swing", group = gExit, tooltip = "ON = EXIT aur opposite entry ek hi swing par ho sakta hai.")
+
+// ────────────────────────────── ⑤ SIDE BASE ──────────────────────────────────
+string gBase      = "⑤ Side base"
+bool   detectBase = input.bool(true, "Detect side base", group = gBase)
+int    baseLen    = input.int(12, "Lookback (bars)", minval = 5, maxval = 100, group = gBase, tooltip = "Itne bars tak range tight rahe to base banega. 5m chart par 10-15 achha hai.")
+float  baseMult   = input.float(2.0, "Max height (× ATR)", minval = 0.2, step = 0.1, group = gBase, tooltip = "Box nahi ban raha to badhao (2.5-3.0), bahut zyada box ban rahe hain to ghatao (1.2-1.5).")
+bool   tradeBase  = input.bool(true, "Trade base breakout", group = gBase)
+int    baseExpiry = input.int(30, "Breakout valid for (bars)", minval = 1, maxval = 200, group = gBase)
+
+// ─────────────────────────────── ⑥ SESSION ───────────────────────────────────
+string gSess   = "⑥ Session"
+bool   useSess = input.bool(false, "Signal only inside session", group = gSess)
+string sessStr = input.session("0915-1530", "Session", group = gSess)
+string sessTz  = input.string("Asia/Kolkata", "Timezone", group = gSess)
+
+// ─────────────────────────────── HELPERS ─────────────────────────────────────
+// _atLow = true  -> label point ke NEECHE baithta hai (BUY / low anchors)
+// _atLow = false -> label point ke UPAR baithta hai   (SALE / high anchors)
+f_label(_x, _y, _txt, _col, _atLow) =>
+    label.new(_x, _y, _txt, xloc = xloc.bar_index, yloc = yloc.price, color = color.new(_col, 12), style = _atLow ? label.style_label_up : label.style_label_down, textcolor = color.white, size = lblSz)
+
+f_txt(_base, _px) =>
+    showPx ? _base + " " + str.tostring(_px, format.mintick) : _base
+
+// ───────────────────────────── CORE SERIES ───────────────────────────────────
+float atr   = ta.atr(atrLen)
+float emaF  = ta.ema(close, emaFastLen)
+float emaS  = ta.ema(close, emaSlowLen)
+bool  xUp   = ta.crossover(close, emaF)
+bool  xDn   = ta.crossunder(close, emaF)
+bool  inSes = not useSess or not na(time(timeframe.period, sessStr, sessTz))
+float hiN   = ta.highest(high, baseLen)
+float loN   = ta.lowest(low, baseLen)
+
+float ph   = ta.pivothigh(high, pivLen, pivLen)   // na ke alawa value mili = swing high confirm
+float pl   = ta.pivotlow(low, pivLen, pivLen)
+bool  newPH = not na(ph)
+bool  newPL = not na(pl)
+
+// ───────────────────────── SWING MEMORY + STRUCTURE ──────────────────────────
+var float lastSH = na
+var float lastSL = na
+var float prevSH = na
+var float prevSL = na
+
+if newPH
+    prevSH := lastSH
+    lastSH := ph
+if newPL
+    prevSL := lastSL
+    lastSL := pl
+
+// higher-low = bullish structure, lower-high = bearish structure
+bool structBull = na(prevSL) or (newPL and pl > prevSL)
+bool structBear = na(prevSH) or (newPH and ph < prevSH)
+
+bool bullOk = switch trendMode
+    "EMA fast/slow"     => emaF > emaS
+    "Price vs EMA"      => close > emaS
+    "Structure (HH/LL)" => structBull
+    =>                     true
+
+bool bearOk = switch trendMode
+    "EMA fast/slow"     => emaF < emaS
+    "Price vs EMA"      => close < emaS
+    "Structure (HH/LL)" => structBear
+    =>                     true
+
+// ───────────────────────────── ZIG-ZAG LINES ─────────────────────────────────
+var int   zzX = na
+var float zzY = na
+
+if showZZ and (newPH or newPL)
+    float zzP = newPH ? ph : pl
+    int   zzB = bar_index - pivLen
+    if not na(zzX)
+        line.new(zzX, zzY, zzB, zzP, xloc = xloc.bar_index, color = zzCol, width = 1)
+    zzX := zzB
+    zzY := zzP
+
+// ─────────────────────────────── SIDE BASE ───────────────────────────────────
+bool  tight = detectBase and (hiN - loN) <= baseMult * atr
+
+var box   baseBox   = na
+var float baseTop   = na
+var float baseBot   = na
+var int   baseCnt   = 0
+var bool  baseArmed = false
+var int   baseEnd   = na
+
+if tight
+    baseCnt += 1
+    if baseCnt == baseLen
+        // naya base confirm — purana unbroken base cancel
+        baseTop   := hiN
+        baseBot   := loN
+        baseArmed := false
+        baseBox   := box.new(bar_index - baseLen + 1, baseTop, bar_index, baseBot, border_color = color.new(cBase, 20), border_width = 1, bgcolor = color.new(cBase, 88), text = "SIDE BASE", text_size = size.small, text_color = cBase, text_halign = text.align_center, text_valign = text.align_center)
+    if baseCnt > baseLen and not na(baseBox)
+        // base abhi bhi tight hai — box ko live expand karo
+        baseTop := math.max(baseTop, high)
+        baseBot := math.min(baseBot, low)
+        box.set_top(baseBox, baseTop)
+        box.set_bottom(baseBox, baseBot)
+        box.set_right(baseBox, bar_index)
+else
+    if baseCnt >= baseLen
+        baseArmed := true          // base toot gaya -> breakout watch mode
+        baseEnd   := bar_index - 1
+    baseCnt := 0
+    baseBox := na
+
+bool baseUp      = baseArmed and not na(baseTop) and close > baseTop
+bool baseDn      = baseArmed and not na(baseBot) and close < baseBot
+bool baseExpired = baseArmed and not na(baseEnd) and (bar_index - baseEnd) > baseExpiry
+
+if baseUp or baseDn or baseExpired
+    baseArmed := false
+
+// ────────────────────────────── SIGNAL STATE ─────────────────────────────────
+var int    pos      = 0          //  1 = long, -1 = short, 0 = flat
+var float  entryPx  = na
+var float  stopPx   = na
+var float  realized = 0.0
+var int    tradesN  = 0
+var int    winsN    = 0
+
+bool saleSig = false
+bool buySig  = false
+bool exitSig = false
+bool didExit = false
+
+// ──────────────────────────────── EXITS ──────────────────────────────────────
+bool shortExitSwing = pos == -1 and exitOnSwing and newPL
+bool longExitSwing  = pos ==  1 and exitOnSwing and newPH
+bool shortExitEma   = pos == -1 and exitOnEma and xUp
+bool longExitEma    = pos ==  1 and exitOnEma and xDn
+bool shortExitTrail = pos == -1 and useTrail and not na(stopPx) and high >= stopPx
+bool longExitTrail  = pos ==  1 and useTrail and not na(stopPx) and low  <= stopPx
+
+if shortExitSwing or shortExitEma or shortExitTrail
+    float exitPx = (shortExitSwing or shortExitEma) ? close : stopPx
+    int   exX    = shortExitSwing ? bar_index - pivLen : bar_index
+    float exY    = shortExitSwing ? pl : exitPx
+    f_label(exX, exY, f_txt("EXIT", exitPx), cExit, shortExitSwing)
+    float pnl = entryPx - exitPx
+    realized += pnl
+    tradesN  += 1
+    if pnl > 0
+        winsN += 1
+    pos     := 0
+    entryPx := na
+    stopPx  := na
+    exitSig := true
+    didExit := true
+
+if longExitSwing or longExitEma or longExitTrail
+    float exitPx = (longExitSwing or longExitEma) ? close : stopPx
+    int   exX    = longExitSwing ? bar_index - pivLen : bar_index
+    float exY    = longExitSwing ? ph : exitPx
+    f_label(exX, exY, f_txt("EXIT", exitPx), cExit, not longExitSwing)
+    float pnl = exitPx - entryPx
+    realized += pnl
+    tradesN  += 1
+    if pnl > 0
+        winsN += 1
+    pos     := 0
+    entryPx := na
+    stopPx  := na
+    exitSig := true
+    didExit := true
+
+// ──────────────────────────────── ENTRIES ────────────────────────────────────
+bool canEnter   = pos == 0 and (allowReverse or not didExit)
+bool swingShort = newPH and bearOk and inSes
+bool swingLong  = newPL and bullOk and inSes
+bool baseLong   = tradeBase and baseUp and inSes
+bool baseShort  = tradeBase and baseDn and inSes
+
+if canEnter and pos == 0 and (swingShort or baseShort)
+    bool  viaBase = baseShort and not swingShort
+    int   exX     = viaBase ? bar_index : bar_index - pivLen
+    float exY     = viaBase ? high : ph
+    pos     := -1
+    entryPx := close
+    stopPx  := useTrail ? high + trailMult * atr : na
+    f_label(exX, exY, f_txt("SALE", close), cSale, false)
+    saleSig := true
+
+if canEnter and pos == 0 and (swingLong or baseLong)
+    bool  viaBase = baseLong and not swingLong
+    int   exX     = viaBase ? bar_index : bar_index - pivLen
+    float exY     = viaBase ? low : pl
+    pos     := 1
+    entryPx := close
+    stopPx  := useTrail ? low - trailMult * atr : na
+    f_label(exX, exY, f_txt("BUY", close), cBuy, true)
+    buySig := true
+
+// ATR trailing stop update (position ke saath stop ko kheencho)
+if pos == -1 and useTrail
+    stopPx := na(stopPx) ? high + trailMult * atr : math.min(stopPx, high + trailMult * atr)
+if pos == 1 and useTrail
+    stopPx := na(stopPx) ? low - trailMult * atr : math.max(stopPx, low - trailMult * atr)
+
+// ────────────────────────────────── PLOTS ────────────────────────────────────
+plot(showEma ? emaF : na, "EMA fast", color.new(#42a5f5, 0), 1)
+plot(showEma ? emaS : na, "EMA slow", color.new(#ab47bc, 0), 2)
+
+// ───────────────────────────────── INFO TABLE ────────────────────────────────
+float openPnl = pos == 1 ? close - entryPx : pos == -1 ? entryPx - close : 0.0
+
+var table info = table.new(position.top_right, 2, 6, border_width = 1, frame_width = 1, frame_color = color.new(color.gray, 60), border_color = color.new(color.gray, 80))
+
+if showTable and barstate.islast
+    color  pc = pos == 1 ? cBuy : pos == -1 ? cSale : color.new(#787b86, 20)
+    string pt = pos == 1 ? "LONG" : pos == -1 ? "SHORT" : "FLAT"
+    color  mc = color.new(#b2b5be, 0)
+    table.cell(info, 0, 0, "SBE SWING", text_color = color.white, text_size = size.small, bgcolor = color.new(#1e222d, 0))
+    table.cell(info, 1, 0, syminfo.ticker + " · " + timeframe.period, text_color = mc, text_size = size.small, bgcolor = color.new(#1e222d, 0))
+    table.cell(info, 0, 1, "Position", text_color = mc, text_size = size.small)
+    table.cell(info, 1, 1, pt, text_color = color.white, text_size = size.small, bgcolor = pc)
+    table.cell(info, 0, 2, "Entry", text_color = mc, text_size = size.small)
+    table.cell(info, 1, 2, na(entryPx) ? "—" : str.tostring(entryPx, format.mintick), text_color = color.white, text_size = size.small)
+    table.cell(info, 0, 3, "Open P&L (pts)", text_color = mc, text_size = size.small)
+    table.cell(info, 1, 3, str.tostring(openPnl, "#.##"), text_color = openPnl >= 0 ? cBuy : cSale, text_size = size.small)
+    table.cell(info, 0, 4, "Closed P&L (pts)", text_color = mc, text_size = size.small)
+    table.cell(info, 1, 4, str.tostring(realized, "#.##"), text_color = realized >= 0 ? cBuy : cSale, text_size = size.small)
+    table.cell(info, 0, 5, "Trades (W/L)", text_color = mc, text_size = size.small)
+    table.cell(info, 1, 5, str.tostring(tradesN) + " (" + str.tostring(winsN) + "/" + str.tostring(tradesN - winsN) + ")", text_color = color.white, text_size = size.small)
+
+// ────────────────────────────────── ALERTS ───────────────────────────────────
+alertcondition(saleSig, title = "SALE — short setup", message = "SALE short setup • {{ticker}} • {{interval}} • @ {{close}}")
+alertcondition(buySig,  title = "BUY — long setup",   message = "BUY long setup • {{ticker}} • {{interval}} • @ {{close}}")
+alertcondition(exitSig, title = "EXIT — close trade", message = "EXIT close trade • {{ticker}} • {{interval}} • @ {{close}}")
+
+if saleSig
+    alert("SALE " + syminfo.ticker + " " + timeframe.period + " @ " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+if buySig
+    alert("BUY " + syminfo.ticker + " " + timeframe.period + " @ " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+if exitSig
+    alert("EXIT " + syminfo.ticker + " " + timeframe.period + " @ " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
