@@ -233,6 +233,13 @@ Built with:
 
 ---
 
+## 📈 TradingView Pine Scripts
+
+- [`pine/SOT_SMC_Indicator.pine`](pine/SOT_SMC_Indicator.pine) — SMC/ICT style overlay inspired by the reference chart: liquidity swipe, IDM, BOS/CHoCH, OF, order blocks, local + weekly FVG, and BUY/SELL arrows.
+- Setup, inputs, and mapping table: [`pine/README.md`](pine/README.md).
+
+---
+
 **Status:** 🚀 Active Development
 
 **Last Updated:** 2026-05-24
