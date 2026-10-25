@@ -1315,7 +1315,7 @@ if fireEntry
 
 color cCol = close >= open ? #10947F : #EE0B1F
 bool sigC = evtBuy or evtSell
-barcolor(hlSigBars and sigC ? #FFD54F : colorCandles ? cCol : color(na))
+barcolor(hlSigBars and sigC ? #FFD54F : colorCandles ? cCol : na)
 
 var table topBrand = table.new(position.top_center, 1, 1, bgcolor=TRANSP)
 var table midWatermark = table.new(position.middle_center, 1, 1, bgcolor=TRANSP)
