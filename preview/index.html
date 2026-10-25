@@ -412,7 +412,8 @@ fetch('/api/pine', { cache: 'no-store' }).then(r => r.text()).then(async txt => 
     'served file: ' + buf.length.toLocaleString() + ' bytes · ' + lines + ' lines · sha256 ' + hex.slice(0, 16) + '… · last line: ' + txt.trimEnd().split('\n').pop().slice(0, 60) + '…';
 }).catch(() => { document.getElementById('fileMeta').textContent = 'served file: unavailable'; });
 
-function downloadPine() {
+async function downloadPine() {
+  if (!PINE_CACHE) { try { PINE_CACHE = await (await fetch('/api/pine', { cache: 'no-store' })).text(); } catch (_) {} }
   const blob = new Blob([PINE_CACHE], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
