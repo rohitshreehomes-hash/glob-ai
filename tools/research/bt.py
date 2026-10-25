@@ -183,6 +183,8 @@ def run(bars, p=None, years=None, collect=False):
     pdh_swept = pdl_swept = False
     trades_today = 0
     range_trades_today = 0
+    day_wins = 0
+    day_losses = 0
     pre_fires_today = 0
     last_early_bar = -999
     last_closed_bar = -999
@@ -391,6 +393,7 @@ def run(bars, p=None, years=None, collect=False):
             orb_ready = False
             pdh_swept = pdl_swept = False
             trades_today = range_trades_today = pre_fires_today = 0
+            day_wins = day_losses = 0
             pend_dir = 0
 
         if 555 <= mins < 570:
@@ -500,8 +503,10 @@ def run(bars, p=None, years=None, collect=False):
                 if pts > 0:
                     wins += 1
                     win_pts += pts
+                    day_wins += 1
                 else:
                     loss_pts += abs(pts)
+                    day_losses += 1
             tr_open = False
             last_closed_bar = i
 
@@ -577,17 +582,20 @@ def run(bars, p=None, years=None, collect=False):
         strong_bear = c < o and body >= 0.60 * atr_val and clv_bear >= p["minClvRatio"]
 
         warmup = i >= 205
+        day_block = (p.get("stopAfterLosses", 99) < 99 and day_losses >= p.get("stopAfterLosses", 99))\
+                    or (p.get("stopAfterWin", False) and day_wins >= 1)
         base_trend = (not tr_open and pend_dir == 0 and i > last_closed_bar + p["cooldownBars"]
-                      and trades_today < p["maxTradesPerDay"] and warmup and orb_width_ok and coil_ok and er_ok)
+                      and trades_today < p["maxTradesPerDay"] and warmup and orb_width_ok and coil_ok and er_ok and not day_block)
         base_range = (p["useRangeMode"] and not tr_open and pend_dir == 0 and i > last_closed_bar + p["cooldownBars"]
-                      and range_trades_today < p["maxRangeTrades"] and warmup and orb_width_ok and coil_ok)
+                      and range_trades_today < p["maxRangeTrades"] and warmup and orb_width_ok and coil_ok and not day_block)
 
         # time windows
         morn_start = 615 if p["useMornShield"] else 570
         morn_bull = mins >= morn_start or (570 <= mins < 615 and pdh is not None and c > pdh)
         morn_bear = mins >= morn_start or (570 <= mins < 615 and pdl is not None and c < pdl)
-        time_bull = (not new_day) and mins <= p["lastEntryMins"] and morn_bull and atr5m_pct >= p["minAtrPct"]
-        time_bear = (not new_day) and mins <= p["lastEntryMins"] and morn_bear and atr5m_pct >= p["minAtrPct"]
+        mid_ok = not (p.get("skipMidStart", 9999) <= mins < p.get("skipMidEnd", 9999))
+        time_bull = (not new_day) and mins <= p["lastEntryMins"] and mid_ok and morn_bull and atr5m_pct >= p["minAtrPct"]
+        time_bear = (not new_day) and mins <= p["lastEntryMins"] and mid_ok and morn_bear and atr5m_pct >= p["minAtrPct"]
 
         block_reentry = p["earlyBlockBars"] > 0 and last_early_bar > 0 and (i - last_early_bar) <= p["earlyBlockBars"]
         trend_buy = base_trend and not block_reentry and time_bull and bull_regime and bull_piv and strong_bull

@@ -1,8 +1,8 @@
 //@version=6
-indicator("S.O.T SMC Pro v9.2 [Apex Institutional Quantum Engine]", shorttitle="S.O.T Apex v9.2", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+indicator("S.O.T SMC Pro v9.3 [Apex Institutional Quantum Engine]", shorttitle="S.O.T Apex v9.3", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
 
 // =============================================================================
-// 1. INPUT SETTINGS - S.O.T ACADEMY APEX v9.2 (PROFIT-AUDITED: RUNNERS + NO STALL DUMP)
+// 1. INPUT SETTINGS - S.O.T ACADEMY APEX v9.3 (12-YR AUDITED: RUNNERS + COILED IGNITION)
 // =============================================================================
 GRP_1 = "1. v8 Apex Engine Mode (Auto Index/Futures vs Direct CE/PE Option)"
 GRP_2 = "2. Direct Option Chart (CE / PE) SEBI Monthly & Gamma Shield"
@@ -82,7 +82,7 @@ bool useEma50Slope = input.bool(true, "Require Institutional EMA 50 Slope Alignm
 bool useMornShield = input.bool(true, "9:30-10:15 Trap Shield (Require Clean PDH/PDL Break)", group=GRP_3)
 bool useOrbFilter = input.bool(true, "Skip Exhausted Wide-ORB Days (> 4.2x 15m ATR)", group=GRP_3)
 float maxOrb15mMult = input.float(4.2, "Max Allowed ORB Width (x 15m ATR)", minval=2.0, maxval=10.0, step=0.2, group=GRP_3)
-float maxPriorAdx = input.float(32.0, "Max Prior-Bar ADX (Coiled Ignition Cap)", minval=20.0, maxval=55.0, step=1.0, group=GRP_3)
+float maxPriorAdx = input.float(28.0, "Max Prior-Bar ADX (Coiled Ignition Cap, v9.3 = 28)", minval=20.0, maxval=55.0, step=1.0, group=GRP_3)
 float minDiSpread = input.float(12.0, "Min DI+ vs DI- Institutional Momentum Spread", minval=4.0, maxval=30.0, step=1.0, group=GRP_3)
 int swingLen = input.int(3, "External Swing Length (Verified swLen = 3)", minval=2, maxval=20, group=GRP_3)
 int intLen = input.int(2, "Internal IDM / OF Swing Length", minval=1, maxval=10, group=GRP_3)
@@ -193,7 +193,7 @@ bool isNewDay = dayChg or istDayKey != prevIstDay
 bool isSpliceGap = (bar_index > 0 ? (time - prevTimeMs) / 86400000.0 : 0.0) > 20.0
 bool dayOrGap = isNewDay or isSpliceGap
 bool isSettleZone = useIndianRules and isNseBseSymbol and istMins >= 925
-bool isEodExit = useIndianRules and (isNseBseSymbol ? istMins >= 915 : istHr >= 15 and istMn >= 45)
+bool isEodExit = useIndianRules and (isNseBseSymbol ? istMins >= 915 : istHr > 15 or istHr == 15 and istMn >= 45)
 var int lastNewDayBar = -999
 bool prevNewDay = bar_index - lastNewDayBar == 1
 if isNewDay
@@ -1466,7 +1466,7 @@ if barstate.islast and showDashboard
     color hdrBg = color.new(#161B26, 2)
     color rowBg = color.new(#0E1118, 6)
     color lblFg = #9AA4B5
-    table.cell(smcDash, 0, 0, "S.O.T APEX v9.2 B25OCT", bgcolor=hdrBg, text_color=structCol, text_size=size.tiny)
+    table.cell(smcDash, 0, 0, "S.O.T APEX v9.3 B25OCT", bgcolor=hdrBg, text_color=structCol, text_size=size.tiny)
     table.cell(smcDash, 1, 0, modeTitle, bgcolor=hdrBg, text_color=#FFFFFF, text_size=size.tiny)
     table.cell(smcDash, 0, 1, "Apex Readiness", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
     table.cell(smcDash, 1, 1, readyTxt, bgcolor=rowBg, text_color=rdyCol, text_size=size.tiny)

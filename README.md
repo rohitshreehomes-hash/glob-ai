@@ -2,7 +2,7 @@
 
 > **This is the same indicator you already use — nothing renamed, nothing to swap. It fixes the one thing that mattered most in live use: the signal was LATE.** The v8/v9 entry waited for a *confirmed* swing break (`swingLen = 3` ⇒ the pivot is `3` bars old before it is even considered), so the label often printed after 3–5 bars of the move had already happened. The **Micro-Break Early Trigger is built into this same indicator**: it fires on the first qualifying close through the `3/5/8`-bar extreme (optionally led by up to `0.60 ATR`), guarded by VWAP side, EMA-9/21 stack, DI spread, 200-EMA bias, body, volume expansion, CLV and Efficiency Ratio — plus a `12`-bar block that stops the late pivot from re-entering the same move.
 
-> Verification on the final `1,521`-line file (v9.2): **Strict Pine v6 Full-AST Type / Qualifier / `[k]`-in-UDF / Outer-Write / Visual-Signature / Duplicate-Shadowing checker → `0` diagnostics (canary control `7`)**, **PineForge 4-pass compiler → `0` errors (`118` warnings, `61` notes, all informational)**, **native `g++ -std=c++17 -fsyntax-only` → `rc = 0` over `6,558` generated C++ lines**, **`pinetools` Oct-2026 limits → `plot 9`, `request 2`, `table 3`, `IL 27,462–41,222`, `main 40,163`, `max if 3,763` — `[total ok, main ok, if ok]`, `code 18,726` tokens, `strings 15,117 B`, `0` stateful UDFs**, **`PineTS 0.13.0` bar-by-bar VM → `0` runtime errors, `15` plot streams, `3` tables, `2x17` HUD**, and the **byte-identical shipped file** (only the sandbox-missing `syminfo.*` metadata literals supplied) replayed on real NIFTY 5m for 2022–2025 reproduces **every** number in the table below bar-for-bar.
+> Verification on the final `1,521`-line file (v9.3): **Strict Pine v6 Full-AST Type / Qualifier / `[k]`-in-UDF / Outer-Write / Visual-Signature / Duplicate-Shadowing checker → `0` diagnostics (canary control `7`)**, **PineForge 4-pass compiler → `0` errors (`118` warnings, `61` notes, all informational)**, **native `g++ -std=c++17 -fsyntax-only` → `rc = 0` over `6,558` generated C++ lines**, **`pinetools` Oct-2026 limits → `plot 9`, `request 2`, `table 3`, `IL 27,462–41,222`, `main 40,163`, `max if 3,763` — `[total ok, main ok, if ok]`, `code 18,726` tokens, `strings 15,117 B`, `0` stateful UDFs**, **`PineTS 0.13.0` bar-by-bar VM → `0` runtime errors, `15` plot streams, `3` tables, `2x17` HUD**, and the **byte-identical shipped file** (only the sandbox-missing `syminfo.*` metadata literals supplied) replayed on real NIFTY 5m for 2022–2025 reproduces **every** number in the table below bar-for-bar.
 
 ---
 
@@ -78,6 +78,40 @@ Fewer trades, more points, better PF, higher win rate — and **every single yea
 
 `2,730 trades · 46.3% WR · PF 1.36 · +16,899p net · max DD −794p · 11/12 years positive` (2017 is the flat year at `+17p`).
 At zero cost the same book is `+22,359p`; at 4 pts cost `+11,439p` (PF 1.23). **Breakeven cost is ≈8 index points per round trip** — the edge is real but it is a scalper's edge, so slippage discipline matters.
+
+### v9.3 — full 12-year run on the **real indicator** (PineTS, byte-executed file, gross)
+
+| Year | Trades | WR | PF | Net pts |
+|---|---|---|---|---|
+| 2015 | 241 | 48.1% | 1.75 | +1,573.1 |
+| 2016 | 241 | 39.8% | 1.48 | +981.7 |
+| 2017 | 245 | 45.3% | 1.37 | +608.2 |
+| 2018 | 230 | 47.8% | 1.84 | +1,786.2 |
+| 2019 | 268 | 44.4% | 1.27 | +866.3 |
+| 2020 | 251 | 51.0% | 1.85 | +3,042.9 |
+| 2021 | 244 | 43.4% | 1.23 | +1,038.9 |
+| 2022 | 229 | 47.6% | 1.47 | +2,161.0 |
+| 2023 | 240 | 51.3% | 1.93 | +2,942.2 |
+| 2024 | 216 | 47.7% | 1.71 | +3,512.8 |
+| 2025 | 226 | 47.3% | 1.28 | +1,367.8 |
+| 2026* | 12 | 66.7% | 1.88 | +264.0 |
+| **Total** | **2,643** | **46.8%** | **1.54** | **+20,145.0** |
+
+12/12 years positive. Versus v9.2 (`2,864` trades, `46.2%`, PF `1.48`, `+20,104.0p`): **same gross points with 221 fewer trades**, so net of costs it is clearly ahead — at 2 pts/trade `+14,859p` vs `+14,376p`, at 4 pts `+9,573p` vs `+8,648p`.
+
+**Change:** `Max Prior-Bar ADX` `32 → 28`. This is the "coiled ignition" gate — enter as the trend starts, not after ADX has already run. It improves **both** halves of the walk-forward (train `193R→198R`, test `164R→176R`, test PF `1.40→1.49`) and sits on a **plateau** (28 and 30 both beat base; 26 is too tight; 34 equals base), so it is a real structural effect, not a single lucky value.
+
+**Rejected with evidence (do not re-add):**
+
+| Rule tested | Result |
+|---|---|
+| Skip 12:00–14:00 lunch chop | train `193R→134R`, test `164R→132R` — kills more edge than it saves |
+| Skip 12:30–14:00 | train `148R`, test `160R` — still worse than base |
+| Stop trading after first loss of the day | test DD `−794→−611` but `−1,481p` given up |
+| Only trade after an opening winner | test `−99p`, train `−2R` |
+| Max 1 trade/day | train `−55R`, test `−24R` |
+
+Also fixed: non-NSE EOD exit time expression (`istHr > 15 or istHr == 15 and istMn >= 45`) — NSE behaviour (`15:15`) unchanged.
 
 ## 🚀 v9 — What Is New (and What Was Measured)
 
