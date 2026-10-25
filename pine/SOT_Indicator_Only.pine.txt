@@ -50,6 +50,7 @@ color neutralCol = input.color(color.gray,   "Neutral / OF",     group = "4. Col
 color htfCol     = input.color(color.purple, "HTF / Weekly FVG", group = "4. Colors")
 color liqCol     = input.color(color.orange, "Liquidity",        group = "4. Colors")
 
+// Screenshot preset (NZDUSD 1D as in screenshot): Pivot=5, Cooldown=2, HTF=W, Extend=120
 // ----------------------------------------------------------------------------
 // STATE & BASIC SERIES
 // ----------------------------------------------------------------------------
@@ -246,8 +247,6 @@ bool sellSignal = sellRetest and sweepOkBear and not (sellRetest[1] and sweepOkB
 
 plotshape(showSignals and buySignal,  title = "BUY",  style = shape.triangleup,   location = location.belowbar, color = bullCol, size = size.small, text = "BUY")
 plotshape(showSignals and sellSignal, title = "SELL", style = shape.triangledown, location = location.abovebar, color = bearCol, size = size.small, text = "SELL")
-
-// Strategy orders (enables backtest + PineForge validation)
 
 // Subtle bias tint
 bgcolor(trend == 1 ? color.new(bullCol, 96) : trend == -1 ? color.new(bearCol, 96) : na, title = "Bias tint")

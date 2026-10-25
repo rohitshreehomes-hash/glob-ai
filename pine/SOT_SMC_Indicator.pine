@@ -1,6 +1,6 @@
 //@version=6
 // =============================================================================
-// SOT Style SMC Toolkit  -  Pine Script v5  (Strategy version - TradingView + PineForge)
+// SOT Style SMC Toolkit  -  Pine Script v6  (Strategy version - TradingView + PineForge)
 // -----------------------------------------------------------------------------
 // Independent implementation of the concepts shown in the reference chart:
 //   liquidity swipe, IDM, BOS, CHoCH, OF, order blocks, local FVG,
@@ -60,6 +60,7 @@ color neutralCol = input.color(color.gray,   "Neutral / OF",     group = "4. Col
 color htfCol     = input.color(color.purple, "HTF / Weekly FVG", group = "4. Colors")
 color liqCol     = input.color(color.orange, "Liquidity",        group = "4. Colors")
 
+// Screenshot preset (NZDUSD 1D as in screenshot): Pivot=5, Cooldown=2, HTF=W, Extend=120
 // ----------------------------------------------------------------------------
 // STATE & BASIC SERIES
 // ----------------------------------------------------------------------------
