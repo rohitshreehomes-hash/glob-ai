@@ -8,7 +8,7 @@ Aapke screenshot wale chart jaise hi **SMC / ICT** annotations automatically plo
 
 | File | Kaam |
 |---|---|
-| `SOT_SMC_Indicator.pine` | Main Pine Script — TradingView me paste karein |
+| `SOT_SMC_Indicator.pine` | Main Pine Script — `strategy()` overlay (v6, TradingView + PineForge compatible) — TradingView me paste karein |
 | `README.md` | Ye guide |
 
 ## Kya kya plot hota hai
@@ -79,6 +79,14 @@ Alert dialog me ye conditions milengi:
 - `SOT Bear BOS/CHoCH`
 
 `Enable alert conditions` input se inhe on/off kiya ja sakta hai.
+
+## Indicator vs Strategy
+- File ab `strategy()` use karta hai taaki PineForge/backtest validation pass ho aur TradingView dono par chale. Visuals (BOS/CHoCH, OB, FVG, IDM, LIQ) indicator jaisa hi overlay hote hain — `Strategy Tester` tab extra me dikhega.
+- Agar aapko sirf indicator (no Strategy Tester) chahiye: Pine Editor me pehli line ko
+  ```
+  indicator("SOT Style SMC Toolkit", overlay=true, max_bars_back=1000, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+  ```
+  se replace kar do aur neeche ke do `strategy.entry(...)` lines hata/comment kar do. Baaki code same rahega, v6 par hi chalna chahiye.
 
 ## Notes / limitations
 
