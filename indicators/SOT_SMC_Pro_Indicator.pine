@@ -1,0 +1,1521 @@
+//@version=6
+indicator("S.O.T SMC Pro v9 [Apex Institutional Quantum Engine]", shorttitle="S.O.T Apex v9", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+
+// =============================================================================
+// 1. INPUT SETTINGS - S.O.T ACADEMY APEX v9 (PREDICTIVE + RANGE + SEBI GAMMA ENGINE)
+// =============================================================================
+GRP_1 = "1. v8 Apex Engine Mode (Auto Index/Futures vs Direct CE/PE Option)"
+GRP_2 = "2. Direct Option Chart (CE / PE) SEBI Monthly & Gamma Shield"
+GRP_3 = "3. Multi-Index Quantum Regime & Structure Engine"
+GRP_4 = "4. v8 4-Tier Apex Ratchet (Unified +0.20R Fee-Safe BE + 2R Floor + Climax)"
+GRP_5 = "5. S.O.T True SMC Structure, VWAP Bands & Equilibrium"
+GRP_6 = "6. Visual Theme, Trade Box & Live Audit Dashboard"
+GRP_0 = "0. v9 Predictive Pre-Signal + Sideways Range Radar"
+GRP_0B = "0B. v9.1 Early Trigger Engine (Jaldi Buy/Sell - More Movement)"
+
+string earlyMode = input.string("Micro 5-Bar", "Early Trigger Mode (Jaldi Entry)", options=["Off (Pivot Break Only)", "Micro 3-Bar (Fastest)", "Micro 5-Bar", "Micro 8-Bar (Safest)"], group=GRP_0B)
+float earlyLeadAtr = input.float(0.20, "Trigger Level Lead (x ATR) - raise for even earlier entry", minval=0.0, maxval=0.60, step=0.02, group=GRP_0B)
+float earlyBodyMin = input.float(0.30, "Min Signal Bar Body (x ATR)", minval=0.10, maxval=0.90, step=0.05, group=GRP_0B)
+float earlyVolX = input.float(1.10, "Min Volume Expansion (x 20-SMA)", minval=0.60, maxval=2.50, step=0.05, group=GRP_0B)
+float earlyErMin = input.float(0.18, "Min Efficiency Ratio For Early Trigger", minval=0.0, maxval=0.60, step=0.02, group=GRP_0B)
+float earlyClvMin = input.float(0.58, "Min Close Location Value (Early)", minval=0.40, maxval=0.90, step=0.02, group=GRP_0B)
+bool earlyNeedEma200 = input.bool(true, "Require 200-EMA Institutional Bias", group=GRP_0B)
+int earlyBlockBars = input.int(12, "Block Late Pivot Re-Entry After Early Signal (Bars)", minval=0, maxval=60, group=GRP_0B)
+bool earlyTagLabels = input.bool(true, "Show EARLY Badge On Signal Label", group=GRP_0B)
+bool showEarlyLevels = input.bool(true, "Draw Live Early Trigger Levels (CE / PE)", group=GRP_0B)
+
+bool usePreSignal = input.bool(true, "Show Pre-Signal Radar Before The Move", group=GRP_0)
+bool allowPreEntry = input.bool(false, "Allow Early Entry On Pre-Signal Confirm (Measured: Off)", group=GRP_0)
+bool showPreSignal = input.bool(true, "Draw Pre-Signal Trigger Lines & Labels", group=GRP_0)
+int preTtlBars = input.int(6, "Pre-Signal Validity (Bars)", minval=2, maxval=20, group=GRP_0)
+float preNearAtr = input.float(0.60, "Max Distance To Trigger Level (x ATR)", minval=0.10, maxval=2.00, step=0.05, group=GRP_0)
+float preSqueezeMult = input.float(0.90, "Compression / Squeeze Threshold (ATR / Baseline)", minval=0.50, maxval=1.20, step=0.01, group=GRP_0)
+float preVolDry = input.float(0.95, "Volume Dry-Up Cap For Pre-Signal (x 20-SMA)", minval=0.30, maxval=1.50, step=0.05, group=GRP_0)
+float preFailAtr = input.float(0.60, "Invalidate Pre-Signal If Price Retreats (x ATR)", minval=0.20, maxval=2.00, step=0.05, group=GRP_0)
+bool useRangeMode = input.bool(true, "Enable Sideways / Range Fade Engine", group=GRP_0)
+bool showRangeBox = input.bool(true, "Draw Live Range Box", group=GRP_0)
+int rangeLookback = input.int(20, "Range Box Lookback (Bars)", minval=8, maxval=80, group=GRP_0)
+float rangeAdxMax = input.float(19.0, "Range Mode Max ADX (Chop Detect)", minval=8.0, maxval=35.0, step=0.5, group=GRP_0)
+float rangeErMax = input.float(0.20, "Range Mode Max Efficiency Ratio", minval=0.05, maxval=0.50, step=0.01, group=GRP_0)
+float rangeEdgeAtr = input.float(0.25, "Range Edge Proximity (x ATR)", minval=0.05, maxval=1.00, step=0.05, group=GRP_0)
+float rangeTp1R = input.float(0.55, "Range Fade TP1 (R Multiple)", minval=0.25, maxval=1.50, step=0.05, group=GRP_0)
+float rangeMaxRiskAtr = input.float(2.60, "Max Range Fade Risk (x ATR)", minval=0.80, maxval=5.00, step=0.10, group=GRP_0)
+float rangeMinRr = input.float(1.60, "Min Range Fade Reward / Risk", minval=0.80, maxval=3.00, step=0.05, group=GRP_0)
+int maxRangeTrades = input.int(3, "Max Range Fade Trades Per Day", minval=1, maxval=8, group=GRP_0)
+bool useExhaustionExit = input.bool(true, "Exhaustion Lock Exit (Capture Climax Points)", group=GRP_0)
+float exhaustRsi = input.float(78.0, "Exhaustion Exit RSI Level", minval=65.0, maxval=90.0, step=1.0, group=GRP_0)
+float exhaustVolX = input.float(2.20, "Exhaustion Volume Expansion (x 20-SMA)", minval=1.20, maxval=6.00, step=0.10, group=GRP_0)
+bool useStallExit = input.bool(true, "Stall Exit (Free Capital In Dead Trades)", group=GRP_0)
+float preCoilAtr = input.float(6.00, "Max Coil Width For Early Entry (x ATR)", minval=0.50, maxval=8.00, step=0.10, group=GRP_0)
+float preBreakBody = input.float(0.08, "Min Close Beyond Trigger Level (x ATR)", minval=0.00, maxval=0.60, step=0.02, group=GRP_0)
+float preBreakVolX = input.float(1.15, "Min Breakout Volume Expansion (x 20-SMA)", minval=0.50, maxval=3.00, step=0.05, group=GRP_0)
+int maxPreTrades = input.int(2, "Max Early Pre-Signal Entries Per Day", minval=0, maxval=3, group=GRP_0)
+int stallBars = input.int(12, "Stall Exit After N Bars Without TP1", minval=4, maxval=40, group=GRP_0)
+float tp2PartialPct = input.float(0.0, "Optional 2R Partial Booking (0 = Off)", minval=0.0, maxval=0.50, step=0.05, group=GRP_0)
+
+string engineModeInput = input.string("Auto-Detect", "Instrument Engine Mode", options=["Auto-Detect", "Index / Futures", "Option Chart (CE/PE)"], group=GRP_1)
+bool indianIndexMode = input.bool(true, "Enable Indian NSE/BSE Session & Auction Shields (IST)", group=GRP_1)
+bool optionLabels = input.bool(true, "Index Mode: Show Buy CE / Buy PE Callouts", group=GRP_1)
+bool showStrikePlan = input.bool(true, "Index Mode: Auto-Suggest ITM-1 Strike & SEBI Lot Qty", group=GRP_1)
+int maxTradesPerDay = input.int(2, "Max Sniper Trades Per Day", minval=1, maxval=5, group=GRP_1)
+int cooldownBars = input.int(4, "Post-Exit Anti-Whipsaw Cooldown Bars (v8 Verified = 4)", minval=0, maxval=20, group=GRP_1)
+float minClvRatio = input.float(0.65, "Min Close Location Value Anti-Wick Filter (v8 = 0.65)", minval=0.40, maxval=0.90, step=0.05, group=GRP_1)
+float minErRatio = input.float(0.18, "Min 10-Bar Kaufman Efficiency Ratio (v8 Anti-Sawtooth = 0.18)", minval=0.0, maxval=0.60, step=0.02, group=GRP_1)
+bool allowPoiEntries = input.bool(false, "Also Fire Early Entries Inside Unconfirmed OB/FVG", group=GRP_1)
+
+float optWkMin = input.float(0.80, "5-Session Active Liquidity Ratio (Blocks Dead Strikes)", minval=0.20, maxval=0.98, step=0.05, group=GRP_2)
+float optMin5mVol = input.float(800.0, "Min Normalized 5m Option Volume (Weekly NIFTY/SENSEX)", minval=0.0, maxval=10000.0, step=100.0, group=GRP_2)
+float optThinChainVol = input.float(85000.0, "Min 5m Depth on Thin Monthly Chains (FINNIFTY/BANKEX)", minval=5000.0, maxval=200000.0, step=5000.0, group=GRP_2)
+float optGamMin = input.float(5.0, "Min 5m Velocity % (Weekly NIFTY/SENSEX = 5.0)", minval=2.0, maxval=12.0, step=0.2, group=GRP_2)
+float optMonthlyGamMin = input.float(7.8, "Min 5m Velocity % (SEBI Monthly BNK/FINN/BX = 7.8)", minval=4.0, maxval=14.0, step=0.2, group=GRP_2)
+float optGamMax = input.float(15.5, "Max 5m Option Velocity % (IV Crush Spike Shield)", minval=10.0, maxval=40.0, step=0.5, group=GRP_2)
+float optMinPremium = input.float(50.0, "Min Option Premium Rs (OTM Theta Decay Shield)", minval=5.0, maxval=300.0, step=5.0, group=GRP_2)
+float optRelVolMin = input.float(1.02, "Min Option Relative ATR Expansion vs Baseline", minval=0.80, maxval=1.50, step=0.02, group=GRP_2)
+float optRsiCap = input.float(82.0, "Max Option RSI Cap (Gamma Runs 60 -> 82)", minval=70.0, maxval=92.0, step=1.0, group=GRP_2)
+float optVolSurge = input.float(1.25, "Min Option Breakout Volume Surge Ratio", minval=0.8, maxval=3.0, step=0.05, group=GRP_2)
+float optMaxDeadFrac = input.float(0.05, "Max Zero-Range Dead Candle Ratio (Blocks Thin OTM)", minval=0.0, maxval=0.30, step=0.05, group=GRP_2)
+bool allowOptShort = input.bool(false, "Option Writers Only: Allow Short Signals on CE/PE Chart", group=GRP_2)
+
+float idxGamMin = input.float(0.100, "Min Index 5m Velocity % (Anti-Chop Shield)", minval=0.040, maxval=0.500, step=0.005, group=GRP_3)
+float idxRelVolMin = input.float(1.07, "Min Index Relative ATR Expansion (v8 Verified = 1.07)", minval=0.80, maxval=1.60, step=0.01, group=GRP_3)
+bool useEma50Slope = input.bool(true, "Require Institutional EMA 50 Slope Alignment", group=GRP_3)
+bool useMornShield = input.bool(true, "9:30-10:15 Trap Shield (Require Clean PDH/PDL Break)", group=GRP_3)
+bool useOrbFilter = input.bool(true, "Skip Exhausted Wide-ORB Days (> 4.2x 15m ATR)", group=GRP_3)
+float maxOrb15mMult = input.float(4.2, "Max Allowed ORB Width (x 15m ATR)", minval=2.0, maxval=10.0, step=0.2, group=GRP_3)
+float maxPriorAdx = input.float(32.0, "Max Prior-Bar ADX (Coiled Ignition Cap)", minval=20.0, maxval=55.0, step=1.0, group=GRP_3)
+float minDiSpread = input.float(12.0, "Min DI+ vs DI- Institutional Momentum Spread", minval=4.0, maxval=30.0, step=1.0, group=GRP_3)
+int swingLen = input.int(3, "External Swing Length (Verified swLen = 3)", minval=2, maxval=20, group=GRP_3)
+int intLen = input.int(2, "Internal IDM / OF Swing Length", minval=1, maxval=10, group=GRP_3)
+
+float idxSl5mMult = input.float(2.7, "Index Initial Stop Loss (5m ATR Mult)", minval=1.5, maxval=5.0, step=0.1, group=GRP_4)
+float idxTrail15mMult = input.float(2.25, "Index Holding SuperTrend Mult (v8 Verified = 2.25x 15m)", minval=1.5, maxval=4.0, step=0.05, group=GRP_4)
+float optSl5mMult = input.float(1.9, "Option Initial Stop Loss (5m ATR Mult)", minval=1.2, maxval=4.0, step=0.1, group=GRP_4)
+float optTrail5mMult = input.float(3.5, "Option Gamma Runner Trail Mult (v8 Verified = 3.5x 5m)", minval=2.0, maxval=6.0, step=0.1, group=GRP_4)
+float idxPartialPct = input.float(0.30, "Index TP1 Partial Booking Fraction (v8 Verified = 0.30)", minval=0.0, maxval=0.70, step=0.05, group=GRP_4)
+float rrTarget1 = input.float(1.30, "Tier-1 Partial & Fee-Safe BE Trigger (R Multiple)", minval=0.8, maxval=3.0, step=0.05, group=GRP_4)
+float tp1FloorR = input.float(0.20, "Tier-1 Unified Fee-Safe Breakeven Floor (+R, Spot & Option)", minval=0.0, maxval=0.60, step=0.05, group=GRP_4)
+float tp2RatchetR = input.float(2.00, "Tier-2 Profit Floor Trigger (R Multiple)", minval=1.4, maxval=4.0, step=0.1, group=GRP_4)
+float tp2FloorR = input.float(0.85, "Tier-2 Locked Profit Floor (+R Multiple)", minval=0.25, maxval=2.0, step=0.05, group=GRP_4)
+float rrTarget2 = input.float(2.50, "Tier-3 Climax Chandelier Trigger (R Multiple)", minval=1.5, maxval=5.0, step=0.1, group=GRP_4)
+float peakLock5mMult = input.float(1.8, "Climax Chandelier Trail (x 5m ATR)", minval=1.0, maxval=3.5, step=0.1, group=GRP_4)
+bool useNextBarOpen = input.bool(false, "Audit Mode: Enter at Next Bar Open", group=GRP_4)
+
+bool showIdm = input.bool(true, "Show IDM (Inducement)", group=GRP_5)
+bool showOf = input.bool(true, "Show OF (Order Flow)", group=GRP_5)
+bool showBos = input.bool(true, "Show BOS (Confirmed Break of Structure)", group=GRP_5)
+bool showChoch = input.bool(true, "Show CHoCH (Protected Change of Character)", group=GRP_5)
+bool showSweep = input.bool(true, "Show Liquidity Swipe + Curved Arrow", group=GRP_5)
+bool showOb = input.bool(true, "Show Order Block Zones + Curved Arrow", group=GRP_5)
+bool showFvg = input.bool(true, "Show Fair Value Gap (FVG) Zones", group=GRP_5)
+bool showHtfFvg = input.bool(true, "Show Auto-HTF FVG Confluence Zones (Zero-Repaint)", group=GRP_5)
+bool showLivePois = input.bool(true, "Show Nearest Unmitigated Institutional Zones", group=GRP_5)
+bool showStrongHl = input.bool(true, "Show Protected Strong Low / High Line", group=GRP_5)
+bool showEqLine = input.bool(true, "Show 50% Premium / Discount Equilibrium", group=GRP_5)
+bool showPdhPdl = input.bool(true, "Show Clean Previous Day High / Low (PDH / PDL)", group=GRP_5)
+bool showOrb = input.bool(true, "Show 9:15-9:30 Opening Range (ORB)", group=GRP_5)
+bool showVwap = input.bool(true, "Show Spot-Safe Session VWAP", group=GRP_5)
+bool showVwapBands = input.bool(true, "Show Institutional VWAP +/- 1 Sigma Value Bands", group=GRP_5)
+float fvgMinAtr = input.float(0.15, "Minimum FVG / OB Impulse Size (ATR Mult)", minval=0.0, maxval=2.0, step=0.05, group=GRP_5)
+int maxActivePois = input.int(12, "Max Unmitigated Zones Tracked", minval=4, maxval=25, group=GRP_5)
+
+color structCol = input.color(#EBE68C, "SMC Structure & Arrow Color", group=GRP_6)
+color zoneFillCol = input.color(color.new(#3A3A3A, 42), "Order Block / FVG Fill Color", group=GRP_6)
+color zoneBorderCol = input.color(color.new(#6E6E6E, 35), "Order Block / FVG Border Color", group=GRP_6)
+bool colorCandles = input.bool(true, "Color Institutional Candles", group=GRP_6)
+bool hlSigBars = input.bool(true, "Highlight Sniper Signal Candle in Gold", group=GRP_6)
+bool showConfPct = input.bool(true, "Show Apex Grade & Confluence % on Signal", group=GRP_6)
+bool showTradePlan = input.bool(true, "Show Active Entry / Trail SL / TP1 / TP2 / Climax Box", group=GRP_6)
+bool showExitTags = input.bool(true, "Show Partial & Trailing Exit P&L Badges", group=GRP_6)
+bool showWatermark = input.bool(true, "Show S.O.T ACADEMY Watermarks", group=GRP_6)
+string watermarkTxt = input.string("S.O.T ACADEMY", "Brand Watermark Text", group=GRP_6)
+bool showDashboard = input.bool(true, "Show 13-Row Apex HUD & Live Audit Table", group=GRP_6)
+string labelSizeOpt = input.string("Small", "Chart Label Text Size", options=["Tiny", "Small", "Normal"], group=GRP_6)
+
+// =============================================================================
+// 2. PURE SIMPLE-QUALIFIED TIMEFRAME CONSTANTS & AUTO-SYMBOL CLASSIFIER
+// =============================================================================
+color TRANSP = color.new(#000000, 100)
+txtSz = labelSizeOpt == "Tiny" ? size.tiny : labelSizeOpt == "Normal" ? size.normal : size.small
+int rawTfSec = timeframe.isseconds ? timeframe.multiplier : timeframe.isminutes ? timeframe.multiplier * 60 : timeframe.isdaily ? 86400 : 300
+float barSec = rawTfSec > 0 ? float(rawTfSec) : 300.0
+int sSec = timeframe.multiplier <= 15 ? 1500 : timeframe.multiplier <= 30 ? 750 : 375
+int sMinA = timeframe.multiplier == 1 ? 375 : timeframe.multiplier == 2 ? 188 : timeframe.multiplier == 3 ? 125 : 0
+int sMinB = timeframe.multiplier <= 5 ? 75 : timeframe.multiplier <= 10 ? 38 : timeframe.multiplier <= 15 ? 25 : 12
+int sMin = sMinA > 0 ? sMinA : sMinB
+int barsSession = timeframe.isseconds ? sSec : timeframe.isminutes ? sMin : 12
+int barsWeek = timeframe.isseconds ? 1500 : barsSession * 5
+float tfScale5 = timeframe.isintraday ? math.sqrt(300.0 / barSec) : 1.0
+float tfScale15 = timeframe.isintraday ? math.sqrt(900.0 / barSec) : 1.0
+string htfSub = timeframe.multiplier <= 5 ? "15" : timeframe.multiplier <= 15 ? "60" : "240"
+string htfSubTitle = timeframe.multiplier <= 5 ? "15M FVG" : timeframe.multiplier <= 15 ? "1H FVG" : "4H FVG"
+string htfTf = timeframe.isintraday ? htfSub : "W"
+string htfTitle = timeframe.isintraday ? htfSubTitle : "W FVG"
+
+string upperSym = str.upper(syminfo.ticker)
+string upperDesc = str.upper(syminfo.description)
+string upperExch = str.upper(syminfo.prefix)
+int symLen = str.length(upperSym)
+string symSfx = symLen >= 3 ? str.substring(upperSym, symLen - 2, symLen) : ""
+string symPrv = symLen >= 3 ? str.substring(upperSym, symLen - 3, symLen - 2) : ""
+bool numOptSfx = (symSfx == "CE" or symSfx == "PE") and str.contains("0123456789", symPrv)
+bool descOptSfx = str.contains(upperDesc, " CALL") or str.contains(upperDesc, " PUT") or str.endswith(upperDesc, " CE") or str.endswith(upperDesc, " PE")
+bool autoIsOption = syminfo.type == "option" or numOptSfx or descOptSfx
+bool isOptionChart = engineModeInput == "Option Chart (CE/PE)" ? true : engineModeInput == "Index / Futures" ? false : autoIsOption
+bool putMatch = symSfx == "PE" or str.contains(upperDesc, " PUT") or str.endswith(upperDesc, " PE")
+bool callMatch = symSfx == "CE" or str.contains(upperDesc, " CALL") or str.endswith(upperDesc, " CE")
+bool isPutContract = putMatch and not callMatch
+bool isBankNifty = str.contains(upperSym, "BANKNIFTY") or str.contains(upperSym, "NIFTYBANK") or str.contains(upperSym, "NSEBANK")
+bool isFinNifty = str.contains(upperSym, "FINNIFTY") or str.contains(upperSym, "CNXFIN") or str.contains(upperSym, "NIFTY_FIN")
+bool isSensex = str.contains(upperSym, "SENSEX") or str.contains(upperSym, "BSESN")
+bool isBankEx = str.contains(upperSym, "BANKEX")
+bool isMidCap = str.contains(upperSym, "MIDCPNIFTY") or str.contains(upperSym, "MIDCAP")
+bool isNseBseSymbol = indianIndexMode and (upperExch == "NSE" or upperExch == "BSE" or str.contains(upperSym, "NIFTY") or isSensex or isBankEx or syminfo.currency == "INR")
+bool useIndianRules = indianIndexMode and timeframe.isintraday
+
+float strikeStep = isBankNifty or isSensex or isBankEx ? 100.0 : isMidCap ? 25.0 : 50.0
+int lotsA = isBankNifty ? 30 : isFinNifty ? 65 : 0
+int lotsB = isMidCap ? 120 : isSensex ? 20 : 0
+int lotsC = isBankEx ? 30 : str.contains(upperSym, "NIFTY") ? 75 : 1
+int lotUnits = lotsA > 0 ? lotsA : lotsB > 0 ? lotsB : lotsC
+float effSlMult = isOptionChart ? math.max(1.5, optSl5mMult * tfScale5) : timeframe.isintraday ? math.max(1.5, idxSl5mMult * tfScale5) : 2.2
+float effLockMult = timeframe.isintraday ? math.max(1.1, peakLock5mMult * tfScale5) : 1.6
+float effOptGamMin = (isBankNifty or isFinNifty or isBankEx) ? math.max(optGamMin, optMonthlyGamMin) : optGamMin
+float effOptMinVol = (isFinNifty or isBankEx) ? math.max(optMin5mVol, optThinChainVol) : optMin5mVol
+
+int istDayKey = year(time, "Asia/Kolkata") * 10000 + month(time, "Asia/Kolkata") * 100 + dayofmonth(time, "Asia/Kolkata")
+int prevIstDay = nz(istDayKey[1], istDayKey)
+int prevTimeMs = nz(time[1], time)
+bool dayChg = timeframe.change("D")
+int istHr = hour(time, "Asia/Kolkata")
+int istMn = minute(time, "Asia/Kolkata")
+int istMins = istHr * 60 + istMn
+bool isNewDay = dayChg or istDayKey != prevIstDay
+bool isSpliceGap = (bar_index > 0 ? (time - prevTimeMs) / 86400000.0 : 0.0) > 20.0
+bool dayOrGap = isNewDay or isSpliceGap
+bool isSettleZone = useIndianRules and isNseBseSymbol and istMins >= 925
+bool isEodExit = useIndianRules and (isNseBseSymbol ? istMins >= 915 : istHr >= 15 and istMn >= 45)
+var int lastNewDayBar = -999
+bool prevNewDay = bar_index - lastNewDayBar == 1
+if isNewDay
+    lastNewDayBar := bar_index
+
+float c1 = nz(close[1], close)
+float c2 = nz(close[2], close)
+float c10 = nz(close[10], close)
+float o1 = nz(open[1], open)
+float o2 = nz(open[2], open)
+float h1 = nz(high[1], high)
+float h2 = nz(high[2], high)
+float l1 = nz(low[1], low)
+float l2 = nz(low[2], low)
+
+calcStrike(float priceVal, bool isCallSide, float stepVal, int lots) =>
+    float atm = math.round(priceVal / stepVal) * stepVal
+    float itm = isCallSide ? atm - stepVal : atm + stepVal
+    string sideStr = isCallSide ? " CE" : " PE"
+    str.tostring(itm, "#") + sideStr + " (" + str.tostring(lots) + " qty)"
+
+// =============================================================================
+// 3. GAP-PROOF VOLATILITY, EFFICIENCY RATIO, SPOT-SAFE VWAP & AUTO-HTF ENGINE
+// =============================================================================
+bool rstBar = bar_index == 0 or isSpliceGap
+float minFlr = math.max(syminfo.mintick * 10.0, close * 0.0001)
+float rawBarRange = math.max(high - low, syminfo.mintick)
+float idxBarRange = math.max(high - low, minFlr)
+float fullTrueRange = math.max(high - low, math.max(math.abs(high - c1), math.abs(low - c1)))
+bool spkBar = useIndianRules and isNseBseSymbol and (barSec < 900.0 and istMins == 555 or istMins >= 925)
+float alphaBase = 2.0 / (math.max(30.0, math.round(72000.0 / barSec)) + 1.0)
+float optTr = bar_index == 0 or isNewDay ? rawBarRange : fullTrueRange
+
+float volSafe = nz(volume, 0.0)
+float activeOptBar = volSafe > 0.0 and high > low ? 1.0 : 0.0
+float rawRet = isOptionChart and isNewDay ? 0.0 : close - c1
+float gChg = math.max(rawRet, 0.0)
+float lChg = math.max(-rawRet, 0.0)
+float uOp = isOptionChart ? 0.0 : math.max(close - open, 0.0)
+float dOp = isOptionChart ? 0.0 : math.max(open - close, 0.0)
+float uMv = dayOrGap and timeframe.isintraday ? uOp : not isOptionChart and isSettleZone ? 0.0 : high - h1
+float dMv = dayOrGap and timeframe.isintraday ? dOp : not isOptionChart and isSettleZone ? 0.0 : l1 - low
+float plusDm = uMv > dMv and uMv > 0.0 ? uMv : 0.0
+float minusDm = dMv > uMv and dMv > 0.0 ? dMv : 0.0
+
+var float lastCleanRng = 0.0
+var float intraAtr = 0.0
+var float idxBase = 0.0
+var float optAtr = 0.0
+if rstBar or not spkBar
+    lastCleanRng := idxBarRange
+float cleanBarRange = spkBar ? math.max(lastCleanRng, minFlr) : idxBarRange
+intraAtr := rstBar ? cleanBarRange : (intraAtr * 13.0 + cleanBarRange) / 14.0
+idxBase := rstBar ? intraAtr : alphaBase * intraAtr + (1.0 - alphaBase) * idxBase
+optAtr := bar_index == 0 ? optTr : (optAtr * 13.0 + optTr) / 14.0
+
+float wkActiveFrac = nz(ta.sma(activeOptBar, barsWeek), 1.0)
+float vol5mAvg = nz(ta.sma(volSafe, barsSession), 0.0) * (300.0 / barSec)
+float deadBarFrac = nz(ta.sma(high == low ? 1.0 : 0.0, barsSession), 0.0)
+float optBaseSma = nz(ta.sma(optAtr, 50), optAtr)
+float vSma20 = ta.sma(volSafe, 20)
+float erPath10 = nz(ta.sma(math.abs(close - c1), 10), 0.0) * 10.0
+
+float atrVal = isOptionChart ? optAtr : intraAtr
+float atrBaseline = isOptionChart ? optBaseSma : idxBase
+float atr5mPct = atrVal * tfScale5 / math.max(close, syminfo.mintick) * 100.0
+float volExp = nz(vSma20, 0.0) > 0.0 ? volSafe / vSma20 : 1.5
+float erVal10 = bar_index >= 10 and erPath10 > 0.000001 ? math.abs(close - c10) / erPath10 : 1.0
+float partW = isOptionChart ? 0.0 : idxPartialPct
+float tp2PartW = isOptionChart ? 0.0 : tp2PartialPct
+float runW = 1.0 - partW
+
+var float ema9 = 0.0
+var float ema21 = 0.0
+var float ema50 = 0.0
+var float ema200 = 0.0
+ema9 := rstBar ? close : 0.2 * close + 0.8 * ema9
+ema21 := rstBar ? close : 2.0 / 22.0 * close + 20.0 / 22.0 * ema21
+ema50 := rstBar ? close : 2.0 / 51.0 * close + 49.0 / 51.0 * ema50
+ema200 := rstBar ? close : 2.0 / 201.0 * close + 199.0 / 201.0 * ema200
+float ema50Lag5 = nz(ema50[5], ema50)
+
+var float avgGain = 0.0
+var float avgLoss = 0.0
+avgGain := bar_index == 0 ? 0.0 : bar_index < 14 and not isOptionChart ? avgGain + gChg / 14.0 : (avgGain * 13.0 + gChg) / 14.0
+avgLoss := bar_index == 0 ? 0.0 : bar_index < 14 and not isOptionChart ? avgLoss + lChg / 14.0 : (avgLoss * 13.0 + lChg) / 14.0
+float rsiVal = bar_index == 0 ? 50.0 : avgLoss == 0.0 ? 100.0 : 100.0 - 100.0 / (1.0 + avgGain / avgLoss)
+
+var float smTr = 0.0
+var float smPlus = 0.0
+var float smMinus = 0.0
+var float gapSafeAdx = 20.0
+float dmiTr = isOptionChart ? optTr : dayOrGap or isSettleZone ? cleanBarRange : fullTrueRange
+smTr := bar_index == 0 and isOptionChart ? 0.0 : rstBar and not isOptionChart ? dmiTr : (smTr * 13.0 + dmiTr) / 14.0
+smPlus := bar_index == 0 and isOptionChart ? 0.0 : rstBar and not isOptionChart ? plusDm : (smPlus * 13.0 + plusDm) / 14.0
+smMinus := bar_index == 0 and isOptionChart ? 0.0 : rstBar and not isOptionChart ? minusDm : (smMinus * 13.0 + minusDm) / 14.0
+
+float plusDi = bar_index == 0 and isOptionChart ? 20.0 : smTr > 0.0 ? 100.0 * smPlus / smTr : 0.0
+float minusDi = bar_index == 0 and isOptionChart ? 20.0 : smTr > 0.0 ? 100.0 * smMinus / smTr : 0.0
+float diSum = plusDi + minusDi
+float dxRaw = diSum > 0.0001 ? 100.0 * math.abs(plusDi - minusDi) / diSum : 0.0
+float stMultE = isOptionChart ? math.max(1.2, 2.0 * tfScale5) : 2.2
+float stMultT = isOptionChart ? math.max(1.6, optTrail5mMult * tfScale5) : timeframe.isintraday ? math.max(2.0, idxTrail15mMult * tfScale15) : 2.6
+float rawUpE = hl2 - stMultE * atrVal
+float rawDnE = hl2 + stMultE * atrVal
+float rawUpT = hl2 - stMultT * atrVal
+float rawDnT = hl2 + stMultT * atrVal
+float vwapWeight = isOptionChart ? rawBarRange : volSafe > 0.0 ? volSafe : cleanBarRange
+gapSafeAdx := rstBar ? 20.0 : (gapSafeAdx * 13.0 + dxRaw) / 14.0
+float adxLag1 = nz(gapSafeAdx[1], 20.0)
+
+var float pupE = 0.0
+var float pdnE = 0.0
+var int stEntryDir = 1
+if rstBar
+    pupE := rawUpE
+    pdnE := rawDnE
+    stEntryDir := 1
+else
+    float stUpE = c1 > pupE ? math.max(rawUpE, pupE) : rawUpE
+    float stDnE = c1 < pdnE ? math.min(rawDnE, pdnE) : rawDnE
+    stEntryDir := stEntryDir == -1 and close > pdnE ? 1 : stEntryDir == 1 and close < pupE ? -1 : stEntryDir
+    pupE := stUpE
+    pdnE := stDnE
+
+var float pupT = 0.0
+var float pdnT = 0.0
+var int stTrailDir = 1
+if rstBar
+    pupT := rawUpT
+    pdnT := rawDnT
+    stTrailDir := 1
+else
+    float stUpT = c1 > pupT ? math.max(rawUpT, pupT) : rawUpT
+    float stDnT = c1 < pdnT ? math.min(rawDnT, pdnT) : rawDnT
+    stTrailDir := stTrailDir == -1 and close > pdnT ? 1 : stTrailDir == 1 and close < pupT ? -1 : stTrailDir
+    pupT := stUpT
+    pdnT := stDnT
+float stTrailLine = stTrailDir == 1 ? pupT : pdnT
+
+var float cumPV = 0.0
+var float cumPV2 = 0.0
+var float cumW = 0.0
+if dayOrGap or bar_index == 0
+    cumPV := hlc3 * vwapWeight
+    cumPV2 := hlc3 * hlc3 * vwapWeight
+    cumW := vwapWeight
+else if isOptionChart or not isSettleZone
+    cumPV += hlc3 * vwapWeight
+    cumPV2 += hlc3 * hlc3 * vwapWeight
+    cumW += vwapWeight
+float sessionVwap = cumW > 0.0 ? cumPV / cumW : hlc3
+float vwapLag3 = nz(sessionVwap[3], sessionVwap)
+float vwapSigma = math.sqrt(cumW > 0.0 ? math.max(0.0, cumPV2 / cumW - sessionVwap * sessionVwap) : 0.0)
+
+pVwMain = plot(showVwap and timeframe.isintraday ? sessionVwap : float(na), title="Institutional Session VWAP", color=close >= sessionVwap ? color.new(#00E676, 15) : color.new(#FF5252, 15), linewidth=2)
+pVwUp = plot(showVwap and showVwapBands and timeframe.isintraday and vwapSigma > 0.0 ? sessionVwap + vwapSigma : float(na), title="VWAP +1 Sigma Band", color=color.new(#26A69A, 62), linewidth=1)
+pVwDn = plot(showVwap and showVwapBands and timeframe.isintraday and vwapSigma > 0.0 ? sessionVwap - vwapSigma : float(na), title="VWAP -1 Sigma Band", color=color.new(#EF5350, 62), linewidth=1)
+fill(pVwUp, pVwDn, color=color.new(#78909C, 93), title="VWAP Value Area Cloud")
+
+float htfRngExpr = math.max(high[2] - low[2], syminfo.mintick * 20.0)
+bool htfBullExpr = low[1] > high[3] and close[2] > open[2] and low[1] - high[3] >= htfRngExpr * 0.28
+bool htfBearExpr = high[1] < low[3] and close[2] < open[2] and low[3] - high[1] >= htfRngExpr * 0.28
+[secPdh, secPdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+[htfBull, htfBullTop, htfBullBot, htfBear, htfBearTop, htfBearBot, htfStamp] = request.security(syminfo.tickerid, htfTf, [htfBullExpr, low[1], high[3], htfBearExpr, low[3], high[1], time[1]], lookahead=barmerge.lookahead_on)
+int prevHtfStamp = htfStamp[1]
+bool pastOpenSpike = barSec >= 900.0 or istMins > 555
+bool okPdBar = isOptionChart ? true : not isSettleZone and (barSec >= 900.0 or istMins > 555)
+bool newHtfBar = not na(htfStamp) and (na(prevHtfStamp) or htfStamp != prevHtfStamp)
+
+var float prevCleanDh = na
+var float prevCleanDl = na
+var float curCleanDh = na
+var float curCleanDl = na
+var float swpHigh = na
+var float swpLow = na
+if dayOrGap or bar_index == 0
+    if isSpliceGap
+        prevCleanDh := float(na)
+        prevCleanDl := float(na)
+    else if bar_index > 0 and not na(curCleanDh)
+        prevCleanDh := curCleanDh
+        prevCleanDl := curCleanDl
+    curCleanDh := okPdBar ? high : float(na)
+    curCleanDl := okPdBar ? low : float(na)
+    swpHigh := pastOpenSpike ? high : float(na)
+    swpLow := pastOpenSpike ? low : float(na)
+else
+    if okPdBar
+        curCleanDh := na(curCleanDh) ? high : math.max(curCleanDh, high)
+        curCleanDl := na(curCleanDl) ? low : math.min(curCleanDl, low)
+    if pastOpenSpike
+        swpHigh := na(swpHigh) ? high : math.max(swpHigh, high)
+        swpLow := na(swpLow) ? low : math.min(swpLow, low)
+float pdhPrice = timeframe.isintraday and not na(prevCleanDh) ? prevCleanDh : secPdh
+float pdlPrice = timeframe.isintraday and not na(prevCleanDl) ? prevCleanDl : secPdl
+
+// =============================================================================
+// 3B. v9 SIDEWAYS RANGE GEOMETRY + COMPRESSION (SQUEEZE) RADAR
+// =============================================================================
+float rangeHi = ta.highest(high, rangeLookback)
+float rangeLo = ta.lowest(low, rangeLookback)
+float rangeWidth = math.max(rangeHi - rangeLo, syminfo.mintick)
+float rangeMid = (rangeHi + rangeLo) * 0.5
+float rangeWidthAtr = rangeWidth / math.max(atrVal, syminfo.mintick)
+float rangePos = (close - rangeLo) / rangeWidth
+float sqzRatio = atrVal / math.max(atrBaseline, 0.000001)
+bool squeezeOn = sqzRatio <= preSqueezeMult
+bool rangeTradeable = timeframe.isintraday and rangeWidthAtr >= 1.2 and rangeWidthAtr <= 7.0
+bool chopRegime = useRangeMode and timeframe.isintraday and rangeTradeable and gapSafeAdx < rangeAdxMax and erVal10 < rangeErMax
+bool trendRegime = timeframe.isintraday and not chopRegime and gapSafeAdx >= rangeAdxMax and erVal10 >= minErRatio
+
+// =============================================================================
+// 3C. v9.1 MICRO-BREAK LEVELS (EARLIEST VALID TRIGGER, ZERO CONFIRMATION LAG)
+// =============================================================================
+bool earlyOn = earlyMode != "Off (Pivot Break Only)"
+int microLen = earlyMode == "Micro 3-Bar (Fastest)" ? 3 : earlyMode == "Micro 8-Bar (Safest)" ? 8 : 5
+float microHiRaw = nz(ta.highest(high, microLen)[1], high)
+float microLoRaw = nz(ta.lowest(low, microLen)[1], low)
+float microBuyLvl = microHiRaw - earlyLeadAtr * atrVal
+float microSellLvl = microLoRaw + earlyLeadAtr * atrVal
+float microDistBull = microBuyLvl - close
+float microDistBear = close - microSellLvl
+
+// =============================================================================
+// 4. PURE DRAWING HELPERS + 4-TIER APEX EXIT STATE MACHINE
+// =============================================================================
+var poiDir = array.new_int(0)
+var poiTop = array.new_float(0)
+var poiBot = array.new_float(0)
+var poiX1 = array.new_int(0)
+var poiKind = array.new_string(0)
+var poiIsOb = array.new_bool(0)
+var poiIsHtf = array.new_bool(0)
+var liveBoxes = array.new_box(0)
+var liveLabels = array.new_label(0)
+var liveLines = array.new_line(0)
+
+clampBar(int b, int curBar) =>
+    int minB = curBar - 4500
+    int cB = b > minB ? b : minB
+    cB > 0 ? cB : 0
+
+drawStructLine(int x1, int x2, float y, string tag, bool above, float atrRef) =>
+    int sx1 = clampBar(x1, x2)
+    if x2 > sx1 and not na(y)
+        line.new(sx1, y, x2, y, color=structCol, width=1)
+        float ly = above ? y + atrRef * 0.14 : y - atrRef * 0.14
+        lst = above ? label.style_label_down : label.style_label_up
+        label.new(int(math.round((sx1 + x2) * 0.5)), ly, tag, color=TRANSP, textcolor=structCol, style=lst, size=txtSz)
+    0
+
+drawCurvedArrow(int xEnd, float yEnd, bool pointingDown, int spanBars, float atrRef) =>
+    int span = spanBars < 4 ? 4 : spanBars > 18 ? 18 : spanBars
+    int p1x = clampBar(xEnd - span, xEnd)
+    int p2x = clampBar(int(math.round(xEnd - span * 0.45)), xEnd)
+    float dir = pointingDown ? 1.0 : -1.0
+    float p1y = yEnd + dir * atrRef * 1.15
+    float p2y = yEnd + dir * atrRef * 0.72
+    line.new(p1x, p1y, p2x, p2y, color=structCol, width=2)
+    line.new(p2x, p2y, xEnd, yEnd, color=structCol, width=2)
+    int wOff = int(math.round(span * 0.18))
+    int wingX = clampBar(xEnd - (wOff > 1 ? wOff : 1), xEnd)
+    line.new(xEnd, yEnd, wingX, yEnd + dir * atrRef * 0.46, color=structCol, width=2)
+    line.new(xEnd, yEnd, xEnd, yEnd + dir * atrRef * 0.52, color=structCol, width=2)
+    0
+
+drawSwipe(int x1, int x2, float level, bool isBearish, float hiRef, float loRef, float atrRef) =>
+    int sx1 = clampBar(x1, x2)
+    if x2 > sx1 and not na(level)
+        line.new(sx1, level, x2, level, color=structCol, width=1)
+        float ly = isBearish ? level + atrRef * 0.16 : level - atrRef * 0.16
+        lst = isBearish ? label.style_label_down : label.style_label_up
+        label.new(int(math.round((sx1 + x2) * 0.5)), ly, "liquidity swipe", color=TRANSP, textcolor=structCol, style=lst, size=txtSz)
+        float tipY = isBearish ? hiRef + atrRef * 0.15 : loRef - atrRef * 0.15
+        int rawSp = int(math.round((x2 - sx1) * 0.25))
+        int swSp = rawSp < 5 ? 5 : rawSp > 14 ? 14 : rawSp
+        drawCurvedArrow(x2, tipY, isBearish, swSp, atrRef)
+    0
+
+drawPoiZone(int dir, float topVal, float botVal, int x1, string kindStr, int xRight, float atrRef) =>
+    int sx1 = clampBar(x1, xRight)
+    int rx = sx1 + 3 > xRight ? sx1 + 3 : xRight
+    box.new(sx1, topVal, rx, botVal, border_color=zoneBorderCol, border_width=1, bgcolor=zoneFillCol)
+    bool above = dir == -1
+    float ly = above ? topVal + atrRef * 0.14 : botVal - atrRef * 0.14
+    lst = above ? label.style_label_down : label.style_label_up
+    label.new(int(math.round((sx1 + rx) * 0.5)), ly, kindStr, color=TRANSP, textcolor=structCol, style=lst, size=txtSz)
+    float tipY = above ? topVal - atrRef * 0.05 : botVal + atrRef * 0.05
+    int rawW = rx - sx1
+    int zSp = rawW < 4 ? 4 : rawW > 12 ? 12 : rawW
+    drawCurvedArrow(rx, tipY, not above, zSp, atrRef)
+    0
+
+var int dayStartBar = 0
+var int currentDayId = 0
+var float orbHigh = na
+var float orbLow = na
+var bool orbReady = false
+var bool pdhSweptToday = false
+var bool pdlSweptToday = false
+var int tradesToday = 0
+var int rangeTradesToday = 0
+var int preFiresToday = 0
+var int lastEarlyBar = -999
+var int earlySigCount = 0
+var bool trOpen = false
+var int trDir = 0
+var float trEntry = na
+var float trInitSl = na
+var float trTrailSl = na
+var float trPeak = na
+var float trRisk = na
+var float trTp1 = na
+var float trTp2Ref = na
+var float trTp2 = na
+var bool trTp1Hit = false
+var bool trTp2Hit = false
+var bool trLock = false
+var bool trRange = false
+var bool trTp2Booked = false
+var int trBarIdx = 0
+var int trDayId = -1
+var string trStrike = ""
+var string trReason = ""
+var string trStatus = "SCANNING"
+var float trLastPts = 0.0
+var int lastClosedBar = -999
+var int pendDir = 0
+var float pendRisk = na
+var string pendReason = ""
+var bool pendRange = false
+var int btTrades = 0
+var int btWins = 0
+var float btWinPts = 0.0
+var float btLossPts = 0.0
+var float btWinPct = 0.0
+var float btLossPct = 0.0
+
+bool evtPartial = false
+bool evtExit = false
+bool evtBos = false
+bool evtChoch = false
+bool evtIdm = false
+bool evtSweep = false
+bool evtBuy = false
+bool evtSell = false
+bool evtPreBuyArm = false
+bool evtPreSellArm = false
+bool evtPreBuyFire = false
+bool evtPreSellFire = false
+bool evtRangeFade = false
+
+if isNewDay or bar_index == 0
+    dayStartBar := bar_index
+    currentDayId += 1
+    orbHigh := float(na)
+    orbLow := float(na)
+    orbReady := false
+    pdhSweptToday := false
+    pdlSweptToday := false
+    tradesToday := 0
+    rangeTradesToday := 0
+    preFiresToday := 0
+    pendDir := 0
+
+if timeframe.isintraday
+    bool inOrbWin = isNseBseSymbol ? istMins >= 555 and istMins < 570 : bar_index - dayStartBar < 3
+    if inOrbWin
+        orbHigh := na(orbHigh) ? high : math.max(orbHigh, high)
+        orbLow := na(orbLow) ? low : math.min(orbLow, low)
+    else if not na(orbHigh) and not na(orbLow)
+        orbReady := true
+
+if pendDir != 0 and not trOpen and not isNewDay
+    bool pBuy = pendDir == 1
+    trOpen := true
+    trDir := pendDir
+    trEntry := open
+    trInitSl := pBuy ? open - pendRisk : open + pendRisk
+    trTrailSl := trInitSl
+    trPeak := open
+    trRisk := pendRisk
+    trTp1 := pBuy ? open + pendRisk * rrTarget1 : open - pendRisk * rrTarget1
+    trTp2Ref := pBuy ? open + pendRisk * tp2RatchetR : open - pendRisk * tp2RatchetR
+    trTp2 := pBuy ? open + pendRisk * rrTarget2 : open - pendRisk * rrTarget2
+    trTp1Hit := false
+    trTp2Hit := false
+    trLock := false
+    trRange := pendRange
+    trTp2Booked := false
+    if pendRange
+        float pRngSl = pBuy ? rangeLo - 0.20 * atrVal : rangeHi + 0.20 * atrVal
+        trRisk := math.max(math.abs(open - pRngSl), syminfo.mintick)
+        trInitSl := pRngSl
+        trTrailSl := pRngSl
+        trTp1 := pBuy ? open + trRisk * rangeTp1R : open - trRisk * rangeTp1R
+        trTp2Ref := pBuy ? open + trRisk : open - trRisk
+        trTp2 := pBuy ? math.max(open + trRisk * 1.20, rangeHi - 0.15 * atrVal) : math.min(open - trRisk * 1.20, rangeLo + 0.15 * atrVal)
+    pendRange := false
+    trBarIdx := bar_index - 1
+    trDayId := currentDayId
+    trStrike := isOptionChart ? syminfo.ticker : calcStrike(open, pBuy, strikeStep, lotUnits)
+    trReason := pendReason
+    trStatus := isOptionChart ? "GAMMA ACTIVE" : "RUNNING"
+    pendDir := 0
+
+bool isTrBar = trOpen and bar_index > trBarIdx
+bool isL = trDir == 1
+bool doClose = false
+float exitPrice = close
+string closeTag = ""
+bool hitStop = isTrBar and (isL ? low <= trTrailSl : high >= trTrailSl)
+
+if isTrBar and currentDayId != trDayId
+    doClose := true
+    exitPrice := open
+    closeTag := "Gap Exit"
+else if isTrBar and hitStop
+    exitPrice := isL ? math.min(open, trTrailSl) : math.max(open, trTrailSl)
+    doClose := true
+    string subTag = trTp1Hit ? "+0.2R Lock" : "SL Exit"
+    closeTag := trLock ? "Climax Lock" : trTp2Hit ? "+0.85R Lock" : subTag
+else if isTrBar
+    bool tp1Cross = not trTp1Hit and (isL ? high >= trTp1 : low <= trTp1)
+    if tp1Cross
+        trTp1Hit := true
+        evtPartial := true
+        trStatus := partW > 0.0 ? "TP1 HIT (+0.2R LOCK)" : "GAMMA +1.3R (+0.2R LOCK)"
+        trTrailSl := isL ? math.max(trTrailSl, trEntry + tp1FloorR * trRisk) : math.min(trTrailSl, trEntry - tp1FloorR * trRisk)
+    if tp1Cross and showExitTags
+        float tp1Y = isL ? high + atrVal * 0.22 : low - atrVal * 0.22
+        tp1St = isL ? label.style_label_down : label.style_label_up
+        string tp1Txt = partW > 0.0 ? "TP1 (30% | +0.2R SL)" : "BE LOCK (+0.2R SL)"
+        label.new(bar_index, tp1Y, tp1Txt, color=color.new(#00695C, 12), textcolor=#A7FFEB, style=tp1St, size=size.tiny)
+    trPeak := isL ? math.max(trPeak, high) : math.min(trPeak, low)
+    float barClvUp = high > low ? (close - low) / (high - low) : 0.5
+    float barClvDn = high > low ? (high - close) / (high - low) : 0.5
+    float favPeak = isL ? trPeak - trEntry : trEntry - trPeak
+    bool rngTgtHit = trRange and (isL ? high >= trTp2 : low <= trTp2)
+    bool exhHit = useExhaustionExit and trTp1Hit and favPeak >= trRisk and volExp >= exhaustVolX and (isL ? rsiVal >= exhaustRsi and barClvDn >= 0.62 : rsiVal <= 100.0 - exhaustRsi and barClvUp >= 0.62)
+    bool stallHit = useStallExit and not trTp1Hit and bar_index - trBarIdx >= stallBars and favPeak < 0.30 * trRisk
+    if rngTgtHit or exhHit or stallHit
+        doClose := true
+        exitPrice := rngTgtHit ? trTp2 : close
+        closeTag := rngTgtHit ? "Range Target" : exhHit ? "Exhaustion Lock" : "Stall Exit"
+    else if isEodExit
+        doClose := true
+        exitPrice := close
+        closeTag := "3:15 Square-Off"
+    else
+        bool stOkT = not isOptionChart or stTrailDir == (isL ? 1 : -1)
+        float nextStT = isL ? math.max(trTrailSl, stTrailLine) : math.min(trTrailSl, stTrailLine)
+        trTrailSl := stOkT ? nextStT : trTrailSl
+        float favMove = isL ? trPeak - trEntry : trEntry - trPeak
+        float ratchetR = trRange ? 1.0 : tp2RatchetR
+        float climaxR = trRange ? 2.0 : rrTarget2
+        if favMove >= ratchetR * trRisk
+            trTp2Hit := true
+            trStatus := "+0.85R PROFIT FLOOR"
+            trTrailSl := isL ? math.max(trTrailSl, trEntry + tp2FloorR * trRisk) : math.min(trTrailSl, trEntry - tp2FloorR * trRisk)
+        if favMove >= climaxR * trRisk
+            trLock := true
+            trStatus := "CLIMAX LOCK ACTIVE"
+            trTrailSl := isL ? math.max(trTrailSl, trPeak - effLockMult * atrVal) : math.min(trTrailSl, trPeak + effLockMult * atrVal)
+
+if isTrBar and doClose
+    float sgn = isL ? 1.0 : -1.0
+    float bookTp1 = partW > 0.0 and trTp1Hit ? partW : 0.0
+    float bookTp2 = tp2PartW > 0.0 and trTp2Hit ? tp2PartW : 0.0
+    float bookRun = 1.0 - bookTp1 - bookTp2
+    float totalPts = bookTp1 * sgn * (trTp1 - trEntry) + bookTp2 * sgn * (trTp2Ref - trEntry) + bookRun * sgn * (exitPrice - trEntry)
+    float tradePct = totalPts / math.max(trEntry, syminfo.mintick) * 100.0
+    btTrades += 1
+    trLastPts := totalPts
+    trOpen := false
+    lastClosedBar := bar_index
+    evtExit := true
+    trStatus := "CLOSED (" + (totalPts >= 0.0 ? "+" : "") + str.tostring(totalPts, "#.#") + " pts)"
+    btWins += totalPts > 0.0 ? 1 : 0
+    btWinPts += totalPts > 0.0 ? totalPts : 0.0
+    btWinPct += totalPts > 0.0 ? tradePct : 0.0
+    btLossPts += totalPts <= 0.0 ? math.abs(totalPts) : 0.0
+    btLossPct += totalPts <= 0.0 ? math.abs(tradePct) : 0.0
+    if showExitTags
+        color exCol = totalPts >= 0.0 ? color.new(#004D40, 10) : color.new(#4E1318, 10)
+        color exTxt = totalPts >= 0.0 ? #69F0AE : #FF8A80
+        float exY = isL ? high + atrVal * 0.35 : low - atrVal * 0.35
+        exSt = isL ? label.style_label_down : label.style_label_up
+        string exSgn = totalPts >= 0.0 ? "+" : ""
+        string exLbl = closeTag + " " + exSgn + str.tostring(totalPts, "#.#") + " pts"
+        label.new(bar_index, exY, exLbl, color=exCol, textcolor=exTxt, style=exSt, size=size.tiny)
+
+plot(showTradePlan and trOpen ? trTrailSl : float(na), title="Apex Live Trailing Stop", color=#FFD54F, style=plot.style_linebr, linewidth=2)
+
+// =============================================================================
+// 5. S.O.T TRUE SMC MARKET STRUCTURE (UNCONDITIONAL TOP-LEVEL PIVOTS)
+// =============================================================================
+float eph = ta.pivothigh(high, swingLen, swingLen)
+float epl = ta.pivotlow(low, swingLen, swingLen)
+float optEph = ta.pivothigh(high, 4, 4)
+float iph = ta.pivothigh(high, intLen, intLen)
+float ipl = ta.pivotlow(low, intLen, intLen)
+
+var float prevStructHigh = na
+var float prevStructLow = na
+var float prevOptHigh = na
+var float extHigh = na
+var int extHighBar = 0
+var bool extHighDone = false
+var float extLow = na
+var int extLowBar = 0
+var bool extLowDone = false
+float priorSwingHigh = prevStructHigh
+float priorSwingLow = prevStructLow
+float priorOptHigh = prevOptHigh
+if not na(eph)
+    extHigh := eph
+    extHighBar := bar_index - swingLen
+    extHighDone := false
+    prevStructHigh := eph
+if not na(epl)
+    extLow := epl
+    extLowBar := bar_index - swingLen
+    extLowDone := false
+    prevStructLow := epl
+if not na(optEph)
+    prevOptHigh := optEph
+
+var int trend = 0
+var float currHigh = na
+var int currHighBar = 0
+var bool currHighConf = false
+var bool currHighPiv = false
+var float currLow = na
+var int currLowBar = 0
+var bool currLowConf = false
+var bool currLowPiv = false
+var float protLow = na
+var int protLowBar = 0
+var float protHigh = na
+var int protHighBar = 0
+var float idmLow = na
+var int idmLowBar = 0
+var float idmHigh = na
+var int idmHighBar = 0
+var float pendPl = na
+var int pendPlBar = 0
+var float pendPh = na
+var int pendPhBar = 0
+var float pullLow = na
+var int pullLowBar = 0
+var float pullHigh = na
+var int pullHighBar = 0
+
+if trend == 0 and not na(extHigh) and not na(extLow)
+    trend := close >= open ? 1 : -1
+    currHigh := extHigh
+    currHighBar := extHighBar
+    currLow := extLow
+    currLowBar := extLowBar
+    protLow := extLow
+    protLowBar := extLowBar
+    protHigh := extHigh
+    protHighBar := extHighBar
+
+if not na(iph)
+    int iphBar = bar_index - intLen
+    if trend == 1 and not currHighConf and (na(currHigh) or iph >= currHigh * 0.9995)
+        currHighPiv := true
+    if trend == -1 and not currLowConf and iphBar < currLowBar
+        idmHigh := iph
+        idmHighBar := iphBar
+    else
+        pendPh := iph
+        pendPhBar := iphBar
+
+if not na(ipl)
+    int iplBar = bar_index - intLen
+    if trend == -1 and not currLowConf and (na(currLow) or ipl <= currLow * 1.0005)
+        currLowPiv := true
+    if trend == 1 and not currHighConf and iplBar < currHighBar
+        idmLow := ipl
+        idmLowBar := iplBar
+    else
+        pendPl := ipl
+        pendPlBar := iplBar
+
+float bodySize = math.abs(close - open)
+float candleRange = high - low
+bool validCandle = not isSettleZone and candleRange > 0.0
+bool bullBodyWick = bodySize >= candleRange * 0.45 or math.min(open, close) - low >= candleRange * 0.42
+bool bearBodyWick = bodySize >= candleRange * 0.45 or high - math.max(open, close) >= candleRange * 0.42
+bool bullReject = validCandle and close > open and bullBodyWick
+bool bearReject = validCandle and close < open and bearBodyWick
+
+if useIndianRules and isNseBseSymbol and not isNewDay and not isSettleZone
+    if not pdhSweptToday and not na(pdhPrice) and high > pdhPrice and close < pdhPrice and close < open
+        pdhSweptToday := true
+        evtSweep := true
+        if showSweep
+            drawSwipe(dayStartBar, bar_index, pdhPrice, true, high, low, atrVal)
+    if not pdlSweptToday and not na(pdlPrice) and low < pdlPrice and close > pdlPrice and close > open
+        pdlSweptToday := true
+        evtSweep := true
+        if showSweep
+            drawSwipe(dayStartBar, bar_index, pdlPrice, false, high, low, atrVal)
+
+if not extHighDone and not na(extHigh) and bar_index > extHighBar and not isSettleZone
+    if high > extHigh and close < extHigh
+        extHighDone := true
+        evtSweep := true
+        if showSweep
+            drawSwipe(extHighBar, bar_index, extHigh, true, high, low, atrVal)
+    else if close > extHigh
+        extHighDone := true
+
+if not extLowDone and not na(extLow) and bar_index > extLowBar and not isSettleZone
+    if low < extLow and close > extLow
+        extLowDone := true
+        evtSweep := true
+        if showSweep
+            drawSwipe(extLowBar, bar_index, extLow, false, high, low, atrVal)
+    else if close < extLow
+        extLowDone := true
+
+int curTrend = trend
+if curTrend == 1 and not currHighConf and not na(idmLow) and bar_index > idmLowBar and low < idmLow
+    if showIdm
+        drawStructLine(idmLowBar, bar_index, idmLow, "IDM", false, atrVal)
+    currHighConf := true
+    idmLow := float(na)
+    pullLow := low
+    pullLowBar := bar_index
+    evtIdm := true
+if curTrend == 1 and currHighConf and (na(pullLow) or low < pullLow)
+    pullLow := low
+    pullLowBar := bar_index
+if curTrend == 1 and not na(protLow) and bar_index > protLowBar and close < protLow
+    evtChoch := true
+    if showChoch
+        drawStructLine(protLowBar, bar_index, protLow, "Choch", false, atrVal)
+    bool hasValidPh = not na(pendPh) and pendPhBar > currHighBar
+    trend := -1
+    protHigh := currHigh
+    protHighBar := currHighBar
+    currLow := low
+    currLowBar := bar_index
+    currLowConf := false
+    currLowPiv := false
+    idmHigh := hasValidPh ? pendPh : float(na)
+    idmHighBar := hasValidPh ? pendPhBar : idmHighBar
+    pendPh := float(na)
+    pullHigh := float(na)
+else if curTrend == 1 and bar_index > currHighBar and close > currHigh and currHighConf
+    evtBos := true
+    if showBos
+        drawStructLine(currHighBar, bar_index, currHigh, "Bos", true, atrVal)
+    protLow := pullLow
+    protLowBar := pullLowBar
+    currHigh := high
+    currHighBar := bar_index
+    currHighConf := false
+    currHighPiv := false
+    idmLow := float(na)
+    pendPl := float(na)
+    pullLow := float(na)
+else if curTrend == 1 and bar_index > currHighBar and close > currHigh
+    if currHighPiv and showOf
+        drawStructLine(currHighBar, bar_index, currHigh, "OF", true, atrVal)
+    if currHighPiv and not na(pendPl) and pendPlBar > currHighBar
+        idmLow := pendPl
+        idmLowBar := pendPlBar
+        pendPl := float(na)
+    currHigh := high
+    currHighBar := bar_index
+    currHighPiv := false
+else if curTrend == 1 and not currHighConf and high > currHigh
+    if not na(pendPl) and pendPlBar > currHighBar
+        idmLow := pendPl
+        idmLowBar := pendPlBar
+        pendPl := float(na)
+    currHigh := high
+    currHighBar := bar_index
+    currHighPiv := false
+
+if curTrend == -1 and not currLowConf and not na(idmHigh) and bar_index > idmHighBar and high > idmHigh
+    if showIdm
+        drawStructLine(idmHighBar, bar_index, idmHigh, "IDM", true, atrVal)
+    currLowConf := true
+    idmHigh := float(na)
+    pullHigh := high
+    pullHighBar := bar_index
+    evtIdm := true
+if curTrend == -1 and currLowConf and (na(pullHigh) or high > pullHigh)
+    pullHigh := high
+    pullHighBar := bar_index
+if curTrend == -1 and not na(protHigh) and bar_index > protHighBar and close > protHigh
+    evtChoch := true
+    if showChoch
+        drawStructLine(protHighBar, bar_index, protHigh, "Choch", true, atrVal)
+    bool hasValidPl = not na(pendPl) and pendPlBar > currLowBar
+    trend := 1
+    protLow := currLow
+    protLowBar := currLowBar
+    currHigh := high
+    currHighBar := bar_index
+    currHighConf := false
+    currHighPiv := false
+    idmLow := hasValidPl ? pendPl : float(na)
+    idmLowBar := hasValidPl ? pendPlBar : idmLowBar
+    pendPl := float(na)
+    pullLow := float(na)
+else if curTrend == -1 and bar_index > currLowBar and close < currLow and currLowConf
+    evtBos := true
+    if showBos
+        drawStructLine(currLowBar, bar_index, currLow, "Bos", false, atrVal)
+    protHigh := pullHigh
+    protHighBar := pullHighBar
+    currLow := low
+    currLowBar := bar_index
+    currLowConf := false
+    currLowPiv := false
+    idmHigh := float(na)
+    pendPh := float(na)
+    pullHigh := float(na)
+else if curTrend == -1 and bar_index > currLowBar and close < currLow
+    if currLowPiv and showOf
+        drawStructLine(currLowBar, bar_index, currLow, "OF", false, atrVal)
+    if currLowPiv and not na(pendPh) and pendPhBar > currLowBar
+        idmHigh := pendPh
+        idmHighBar := pendPhBar
+        pendPh := float(na)
+    currLow := low
+    currLowBar := bar_index
+    currLowPiv := false
+else if curTrend == -1 and not currLowConf and low < currLow
+    if not na(pendPh) and pendPhBar > currLowBar
+        idmHigh := pendPh
+        idmHighBar := pendPhBar
+        pendPh := float(na)
+    currLow := low
+    currLowBar := bar_index
+    currLowPiv := false
+
+// =============================================================================
+// 6. APEX v9 DUAL SNIPER ENTRY ENGINE + PRE-SIGNAL RADAR + OB/FVG POIs + 18-ROW HUD
+// =============================================================================
+bool hasValidPd = not na(pdhPrice) and not na(pdlPrice)
+float clvBull = candleRange > 0.0 ? math.min(1.0, math.max(0.0, (close - low) / candleRange)) : 0.5
+float clvBear = candleRange > 0.0 ? math.min(1.0, math.max(0.0, (high - close) / candleRange)) : 0.5
+float eqLevel = hasValidPd ? (pdhPrice + pdlPrice) * 0.5 : not na(currHigh) and not na(currLow) ? (currHigh + currLow) * 0.5 : float(na)
+
+bool inMornWin = istMins >= 570 and istMins < 615
+int mornStart = useMornShield ? 615 : 570
+bool mornBullOk = istMins >= mornStart or inMornWin and not na(pdhPrice) and close > pdhPrice
+bool mornBearOk = istMins >= mornStart or inMornWin and not na(pdlPrice) and close < pdlPrice
+bool timeBullOk = not useIndianRules or not isNseBseSymbol or not isNewDay and istMins <= 875 and mornBullOk
+bool timeBearOk = not useIndianRules or not isNseBseSymbol or not isNewDay and istMins <= 875 and mornBearOk
+bool diBullOk = not timeframe.isintraday or plusDi - minusDi >= minDiSpread
+bool diBearOk = not timeframe.isintraday or minusDi - plusDi >= minDiSpread
+bool volOkOpt = vol5mAvg >= effOptMinVol or volSafe == 0.0 and not isNseBseSymbol
+bool liqOkOpt = wkActiveFrac >= optWkMin and volOkOpt
+bool itoGammaOk = liqOkOpt and atr5mPct >= effOptGamMin and atr5mPct <= optGamMax and deadBarFrac <= optMaxDeadFrac and close >= optMinPremium and volExp >= optVolSurge and atrVal >= optRelVolMin * atrBaseline
+bool vwapUp = close > sessionVwap and sessionVwap >= vwapLag3
+bool vwapDn = close < sessionVwap and sessionVwap <= vwapLag3
+bool ema50Up = not useEma50Slope or ema50 >= ema50Lag5
+bool ema50Dn = not useEma50Slope or ema50 <= ema50Lag5
+bool emaBullStack = ema9 > ema21 and ema21 > ema50 and ema50Up
+bool emaBearStack = ema9 < ema21 and ema21 < ema50 and ema50Dn
+bool optBullReg = itoGammaOk and vwapUp and stEntryDir == 1 and emaBullStack and orbReady and close > orbHigh and rsiVal >= 58.0 and rsiVal <= optRsiCap and diBullOk
+bool optBearReg = allowOptShort and itoGammaOk and vwapDn and stEntryDir == -1 and emaBearStack and orbReady and close < orbLow and rsiVal <= 42.0 and diBearOk
+bool idxVolOk = atrVal >= idxRelVolMin * atrBaseline and atr5mPct >= idxGamMin
+bool bullReclaim = close > pdhPrice or not na(swpLow) and swpLow < pdlPrice and close > pdlPrice
+bool bearReclaim = close < pdlPrice or not na(swpHigh) and swpHigh > pdhPrice and close < pdhPrice
+bool bullPdOrExpand = idxVolOk and hasValidPd and bullReclaim
+bool bearPdOrExpand = idxVolOk and hasValidPd and bearReclaim
+bool idxBullReg = close > ema200 and bullPdOrExpand and vwapUp and stEntryDir == 1 and emaBullStack and orbReady and close > orbHigh and rsiVal >= 58.0 and diBullOk
+bool idxBearReg = close < ema200 and bearPdOrExpand and vwapDn and stEntryDir == -1 and emaBearStack and orbReady and close < orbLow and rsiVal <= 42.0 and diBearOk
+bool intraBullReg = isOptionChart ? optBullReg : idxBullReg
+bool intraBearReg = isOptionChart ? optBearReg : idxBearReg
+bool htfShortAllow = not isOptionChart or allowOptShort
+bool bullRegime = timeframe.isintraday ? intraBullReg : trend == 1 and close > ema21
+bool bearRegime = timeframe.isintraday ? intraBearReg : htfShortAllow and trend == -1 and close < ema21
+
+bool orbWidthOk = not useOrbFilter or not timeframe.isintraday or not na(orbHigh) and orbHigh - orbLow <= maxOrb15mMult * tfScale15 * atrVal
+bool coilAdxOk = not timeframe.isintraday or adxLag1 <= maxPriorAdx
+bool erRatioOk = isOptionChart or not timeframe.isintraday or erVal10 >= minErRatio
+float bullPivotRef = isOptionChart ? priorOptHigh : priorSwingHigh
+bool bullPivBreak = not na(bullPivotRef) and close > bullPivotRef
+bool bearPivBreak = not na(priorSwingLow) and close < priorSwingLow
+bool strongBullCnd = close > open and bodySize >= 0.60 * atrVal and clvBull >= minClvRatio
+bool strongBearCnd = close < open and bodySize >= 0.60 * atrVal and clvBear >= minClvRatio
+
+int sc1 = close > sessionVwap ? 1 : 0
+int sc2 = stEntryDir == 1 ? 1 : 0
+int sc3 = ema9 > ema21 and ema21 > ema50 ? 1 : 0
+int sc4 = orbReady and close > orbHigh ? 1 : 0
+int sc5 = rsiVal >= 58.0 ? 1 : 0
+int sc6 = (isOptionChart ? itoGammaOk : bullPdOrExpand) ? 1 : 0
+int sc7 = bullPivBreak ? 1 : 0
+int sc8 = strongBullCnd ? 1 : 0
+int sc9 = clvBull >= minClvRatio and erRatioOk ? 1 : 0
+int bullScore = sc1 + sc2 + sc3 + sc4 + sc5 + sc6 + sc7 + sc8 + sc9
+
+int sd1 = close < sessionVwap ? 1 : 0
+int sd2 = stEntryDir == -1 ? 1 : 0
+int sd3 = ema9 < ema21 and ema21 < ema50 ? 1 : 0
+int sd4 = orbReady and close < orbLow ? 1 : 0
+int sd5 = rsiVal <= 42.0 ? 1 : 0
+int sd6 = bearPdOrExpand ? 1 : 0
+int sd7 = bearPivBreak ? 1 : 0
+int sd8 = strongBearCnd ? 1 : 0
+int sd9 = clvBear >= minClvRatio and erRatioOk ? 1 : 0
+int bearScore = isOptionChart ? 0 : sd1 + sd2 + sd3 + sd4 + sd5 + sd6 + sd7 + sd8 + sd9
+
+bool warmupReady = bar_index >= (isOptionChart ? 55 : 205) or not timeframe.isintraday
+bool bullTrig = timeframe.isintraday ? bullPivBreak : evtBos
+bool bearTrig = timeframe.isintraday ? bearPivBreak : evtBos
+bool baseCanEnterTrend = not trOpen and pendDir == 0 and bar_index > lastClosedBar + cooldownBars and tradesToday < maxTradesPerDay and warmupReady and orbWidthOk and coilAdxOk and erRatioOk
+bool baseCanEnterRange = useRangeMode and not trOpen and pendDir == 0 and bar_index > lastClosedBar + cooldownBars and rangeTradesToday < maxRangeTrades and warmupReady and orbWidthOk and coilAdxOk
+bool baseCanEnter = baseCanEnterTrend
+bool earlyBlockReentry = earlyBlockBars > 0 and lastEarlyBar > 0 and bar_index - lastEarlyBar <= earlyBlockBars
+bool trendBuySig = baseCanEnterTrend and not earlyBlockReentry and timeBullOk and bullRegime and bullTrig and strongBullCnd
+bool trendSellSig = baseCanEnterTrend and not earlyBlockReentry and timeBearOk and bearRegime and bearTrig and strongBearCnd and not trendBuySig
+float rngSlBull = rangeLo - 0.20 * atrVal
+float rngSlBear = rangeHi + 0.20 * atrVal
+float rngRiskBull = close - rngSlBull
+float rngRiskBear = rngSlBear - close
+float rngRewBull = (rangeHi - 0.15 * atrVal) - close
+float rngRewBear = close - (rangeLo + 0.15 * atrVal)
+bool rangeSetupBull = useRangeMode and chopRegime and low <= rangeLo + rangeEdgeAtr * atrVal and close >= rangeLo + 0.12 * atrVal and bullReject and rsiVal <= 40.0 and rangeWidthAtr >= 1.8
+bool rangeSetupBear = useRangeMode and chopRegime and high >= rangeHi - rangeEdgeAtr * atrVal and close <= rangeHi - 0.12 * atrVal and bearReject and rsiVal >= 60.0 and rangeWidthAtr >= 1.8
+bool rngRiskOkBull = rngRiskBull <= rangeMaxRiskAtr * atrVal and rngRewBull >= rangeMinRr * rngRiskBull
+bool rngRiskOkBear = rngRiskBear <= rangeMaxRiskAtr * atrVal and rngRewBear >= rangeMinRr * rngRiskBear
+bool rangeBuySig = baseCanEnterRange and rangeSetupBull and rngRiskOkBull and timeBullOk
+bool rangeSellSig = baseCanEnterRange and rangeSetupBear and rngRiskOkBear and timeBearOk and (not isOptionChart or allowOptShort) and not rangeBuySig
+bool earlyBiasBull = close > sessionVwap and ema9 > ema21 and plusDi > minusDi and (not earlyNeedEma200 or close > ema200)
+bool earlyBiasBear = close < sessionVwap and ema9 < ema21 and minusDi > plusDi and (not earlyNeedEma200 or close < ema200)
+bool earlyOptOk = not isOptionChart or itoGammaOk
+bool earlyBuySig = earlyOn and timeframe.isintraday and baseCanEnterTrend and timeBullOk and not chopRegime and close >= microBuyLvl and close > open and bodySize >= earlyBodyMin * atrVal and volExp >= earlyVolX and clvBull >= earlyClvMin and erVal10 >= earlyErMin and earlyBiasBull and earlyOptOk
+bool earlySellSig = earlyOn and timeframe.isintraday and baseCanEnterTrend and timeBearOk and not chopRegime and close <= microSellLvl and close < open and bodySize >= earlyBodyMin * atrVal and volExp >= earlyVolX and clvBear >= earlyClvMin and erVal10 >= earlyErMin and earlyBiasBear and earlyOptOk
+bool buySig = earlyBuySig or trendBuySig or rangeBuySig
+bool sellSig = not buySig and (earlySellSig or trendSellSig or rangeSellSig)
+float domClv = buySig ? clvBull : sellSig ? clvBear : math.max(clvBull, clvBear)
+bool pdBreakNow = hasValidPd and close > pdhPrice or hasValidPd and close < pdlPrice
+float scoreBonus = isOptionChart ? (volExp >= 1.8 ? 4.0 : 0.0) : (pdBreakNow ? 4.0 : 0.0)
+int signalConf = int(math.round(math.min(99.0, 86.0 + math.min(13.0, bodySize / math.max(atrVal, 0.01) * 6.0 + domClv * 3.0 + scoreBonus))))
+
+bool fireEntry = false
+bool fireBuySide = true
+bool fireRange = false
+string fireReason = ""
+int fireConf = signalConf
+string optRsn = isPutContract ? "Apex PE Gamma" : "Apex CE Gamma"
+bool fireEarly = false
+if buySig
+    fireEntry := true
+    fireBuySide := true
+    fireEarly := earlyBuySig
+    fireRange := rangeBuySig
+    fireReason := earlyBuySig ? "v9.1 Early Break CE" : rangeBuySig ? "v9 Range Fade CE" : isOptionChart ? optRsn : "Apex Sniper CE"
+else if sellSig
+    fireEntry := true
+    fireBuySide := false
+    fireEarly := earlySellSig
+    fireRange := rangeSellSig
+    fireReason := earlySellSig ? "v9.1 Early Break PE" : rangeSellSig ? "v9 Range Fade PE" : isOptionChart ? "Option Short Breakdown" : "Apex Sniper PE"
+bool evtEarlyBuyNow = fireEarly and fireBuySide
+bool evtEarlySellNow = fireEarly and not fireBuySide
+
+// -----------------------------------------------------------------------------
+// 6A. v9 PREDICTIVE PRE-SIGNAL RADAR (ARM -> CONFIRM, BEFORE THE MOVE RUNS)
+// -----------------------------------------------------------------------------
+float lvlBullPre = float(na)
+if not na(pdhPrice) and pdhPrice > close
+    lvlBullPre := pdhPrice
+if not na(orbHigh) and orbHigh > close
+    lvlBullPre := na(lvlBullPre) ? orbHigh : math.min(lvlBullPre, orbHigh)
+if not na(currHigh) and currHigh > close
+    lvlBullPre := na(lvlBullPre) ? currHigh : math.min(lvlBullPre, currHigh)
+if rangeHi > close
+    lvlBullPre := na(lvlBullPre) ? rangeHi : math.min(lvlBullPre, rangeHi)
+if not na(sessionVwap) and vwapSigma > 0.0 and sessionVwap + vwapSigma > close
+    lvlBullPre := na(lvlBullPre) ? sessionVwap + vwapSigma : math.min(lvlBullPre, sessionVwap + vwapSigma)
+
+float lvlBearPre = float(na)
+if not na(pdlPrice) and pdlPrice < close
+    lvlBearPre := pdlPrice
+if not na(orbLow) and orbLow < close
+    lvlBearPre := na(lvlBearPre) ? orbLow : math.max(lvlBearPre, orbLow)
+if not na(currLow) and currLow < close
+    lvlBearPre := na(lvlBearPre) ? currLow : math.max(lvlBearPre, currLow)
+if rangeLo < close
+    lvlBearPre := na(lvlBearPre) ? rangeLo : math.max(lvlBearPre, rangeLo)
+if not na(sessionVwap) and vwapSigma > 0.0 and sessionVwap - vwapSigma < close
+    lvlBearPre := na(lvlBearPre) ? sessionVwap - vwapSigma : math.max(lvlBearPre, sessionVwap - vwapSigma)
+
+bool preBiasBull = close >= sessionVwap and ema21 >= ema50 and plusDi >= minusDi
+bool preBiasBear = close <= sessionVwap and ema21 <= ema50 and minusDi >= plusDi
+bool preNearBull = not na(lvlBullPre) and lvlBullPre - close <= preNearAtr * atrVal
+bool preNearBear = not na(lvlBearPre) and close - lvlBearPre <= preNearAtr * atrVal
+bool preOkBar = timeframe.isintraday and not isSettleZone and validCandle
+bool preVolDryNow = volExp <= preVolDry
+bool preBullSetup = usePreSignal and preOkBar and squeezeOn and preBiasBull and preNearBull and preVolDryNow
+bool preBearSetup = usePreSignal and preOkBar and squeezeOn and preBiasBear and preNearBear and preVolDryNow
+
+var int preDir = 0
+var float preLevel = na
+var int preBar = -999
+var int preArmCount = 0
+var int preFireCount = 0
+if preDir != 0 and bar_index - preBar > preTtlBars
+    preDir := 0
+    preLevel := float(na)
+
+bool preConfBull = preDir == 1 and close > preLevel and bar_index <= preBar + preTtlBars
+bool preConfBear = preDir == -1 and close < preLevel and bar_index <= preBar + preTtlBars
+bool preFailBull = preDir == 1 and close < preLevel - preFailAtr * atrVal
+bool preFailBear = preDir == -1 and close > preLevel + preFailAtr * atrVal
+bool preFireNow = preConfBull or preConfBear
+bool preFireLong = preConfBull
+
+if preDir == 0 and not preFireNow and not fireEntry and not fireRange and not trOpen and pendDir == 0 and (baseCanEnterTrend or baseCanEnterRange)
+    if preBullSetup and not preBearSetup
+        preDir := 1
+        preLevel := lvlBullPre
+        preBar := bar_index
+        preArmCount += 1
+        evtPreBuyArm := true
+        if showPreSignal and not na(preLevel)
+            line.new(clampBar(bar_index - 2, bar_index), preLevel, bar_index + preTtlBars * 3, preLevel, color=color.new(#FFD54F, 30), style=line.style_dotted, width=1)
+            label.new(bar_index, low - atrVal * 0.45, "PRE-BUY CE > " + str.tostring(preLevel, format.mintick), color=color.new(#3A2E00, 5), textcolor=#FFD54F, style=label.style_label_up, size=size.tiny)
+    else if preBearSetup and not preBullSetup
+        preDir := -1
+        preLevel := lvlBearPre
+        preBar := bar_index
+        preArmCount += 1
+        evtPreSellArm := true
+        if showPreSignal and not na(preLevel)
+            line.new(clampBar(bar_index - 2, bar_index), preLevel, bar_index + preTtlBars * 3, preLevel, color=color.new(#FFD54F, 30), style=line.style_dotted, width=1)
+            label.new(bar_index, high + atrVal * 0.45, "PRE-BUY PE < " + str.tostring(preLevel, format.mintick), color=color.new(#3A2E00, 5), textcolor=#FFD54F, style=label.style_label_down, size=size.tiny)
+
+bool preEntryOkBull = preConfBull and close > open and (close - preLevel) >= preBreakBody * atrVal and volExp >= preBreakVolX and clvBull >= 0.55 and rangeWidthAtr <= preCoilAtr and preFiresToday < maxPreTrades
+bool preEntryOkBear = preConfBear and close < open and (preLevel - close) >= preBreakBody * atrVal and volExp >= preBreakVolX and clvBear >= 0.55 and rangeWidthAtr <= preCoilAtr and preFiresToday < maxPreTrades
+bool preEntryOk = allowPreEntry and (preEntryOkBull or preEntryOkBear) and not fireEntry and not trOpen and pendDir == 0 and baseCanEnterTrend
+
+if preEntryOk
+    fireEntry := true
+    fireBuySide := preEntryOkBull
+    fireReason := preEntryOkBull ? "v9 Pre-Break CE" : "v9 Pre-Break PE"
+    fireConf := 91
+    fireRange := false
+    preFireCount += 1
+    preFiresToday += 1
+    evtPreBuyFire := preEntryOkBull
+    evtPreSellFire := not preEntryOkBull
+    if showPreSignal
+        label.new(bar_index, fireBuySide ? low - atrVal * 0.65 : high + atrVal * 0.65, "EARLY " + (fireBuySide ? "BUY CE" : "BUY PE"), color=color.new(fireBuySide ? #10947F : #EE0B1F, 5), textcolor=#FFFFFF, style=fireBuySide ? label.style_label_up : label.style_label_down, size=size.small)
+    preDir := 0
+    preLevel := float(na)
+else if preFireNow
+    if showPreSignal
+        label.new(bar_index, preFireLong ? high + atrVal * 0.30 : low - atrVal * 0.30, "CONFIRM " + (preFireLong ? "CE" : "PE"), color=color.new(#1B2430, 10), textcolor=#FFD54F, style=preFireLong ? label.style_label_down : label.style_label_up, size=size.tiny)
+    preDir := 0
+    preLevel := float(na)
+
+if preFailBull or preFailBear
+    preDir := 0
+    preLevel := float(na)
+
+plot(showPreSignal and preDir != 0 ? preLevel : float(na), title="v9 Pre-Signal Trigger Level", color=color.new(#FFD54F, 15), style=plot.style_linebr, linewidth=1)
+plot(showEarlyLevels and earlyOn and timeframe.isintraday ? microBuyLvl : float(na), title="v9.1 Early CE Trigger Level", color=color.new(#26C6DA, 40), style=plot.style_linebr, linewidth=1)
+plot(showEarlyLevels and earlyOn and timeframe.isintraday ? microSellLvl : float(na), title="v9.1 Early PE Trigger Level", color=color.new(#EC407A, 40), style=plot.style_linebr, linewidth=1)
+
+int htfX1 = bar_index > 15 ? bar_index - 15 : 0
+if showHtfFvg and newHtfBar
+    if htfBull and not na(htfBullTop) and not na(htfBullBot) and htfBullTop > htfBullBot
+        array.push(poiDir, 1)
+        array.push(poiTop, htfBullTop)
+        array.push(poiBot, htfBullBot)
+        array.push(poiX1, htfX1)
+        array.push(poiKind, htfTitle)
+        array.push(poiIsOb, false)
+        array.push(poiIsHtf, true)
+    if htfBear and not na(htfBearTop) and not na(htfBearBot) and htfBearTop > htfBearBot
+        array.push(poiDir, -1)
+        array.push(poiTop, htfBearTop)
+        array.push(poiBot, htfBearBot)
+        array.push(poiX1, htfX1)
+        array.push(poiKind, htfTitle)
+        array.push(poiIsOb, false)
+        array.push(poiIsHtf, true)
+
+bool sameSessPoi = not useIndianRules or not isNewDay and not prevNewDay and not isSettleZone
+bool bullGapImp = bar_index >= 2 and sameSessPoi and low > h2 and low - h2 >= fvgMinAtr * atrVal and c1 > o1
+bool bearGapImp = bar_index >= 2 and sameSessPoi and high < l2 and l2 - high >= fvgMinAtr * atrVal and c1 < o1
+bool addBullOb = bullGapImp and c2 < o2 and showOb
+bool addBullFvg = bullGapImp and c2 >= o2 and showFvg
+if (addBullOb or addBullFvg) and (addBullOb ? h2 > l2 : low > h2)
+    array.push(poiDir, 1)
+    array.push(poiTop, addBullOb ? h2 : low)
+    array.push(poiBot, addBullOb ? l2 : h2)
+    array.push(poiX1, bar_index - 2)
+    array.push(poiKind, addBullOb ? "Order Block" : "FVG")
+    array.push(poiIsOb, addBullOb)
+    array.push(poiIsHtf, false)
+
+bool addBearOb = bearGapImp and c2 > o2 and showOb
+bool addBearFvg = bearGapImp and c2 <= o2 and showFvg
+if (addBearOb or addBearFvg) and (addBearOb ? h2 > l2 : l2 > high)
+    array.push(poiDir, -1)
+    array.push(poiTop, addBearOb ? h2 : l2)
+    array.push(poiBot, addBearOb ? l2 : high)
+    array.push(poiX1, bar_index - 2)
+    array.push(poiKind, addBearOb ? "Order Block" : "FVG")
+    array.push(poiIsOb, addBearOb)
+    array.push(poiIsHtf, false)
+
+while array.size(poiDir) > maxActivePois
+    array.shift(poiDir)
+    array.shift(poiTop)
+    array.shift(poiBot)
+    array.shift(poiX1)
+    array.shift(poiKind)
+    array.shift(poiIsOb)
+    array.shift(poiIsHtf)
+
+int poiCount = array.size(poiDir)
+if poiCount > 0
+    for idx = poiCount - 1 to 0
+        int zDir = array.get(poiDir, idx)
+        float zTop = array.get(poiTop, idx)
+        float zBot = array.get(poiBot, idx)
+        int zX1 = array.get(poiX1, idx)
+        string zKind = array.get(poiKind, idx)
+        bool zOb = array.get(poiIsOb, idx)
+        bool zHtf = array.get(poiIsHtf, idx)
+        bool readyZ = zHtf or bar_index > zX1 + 2
+        bool isB = zDir == 1
+        bool obOkB = not zOb or currHighConf
+        bool obOkS = not zOb or currLowConf
+        bool mitBreak = readyZ and (isB and close < zBot or not isB and close > zTop)
+        bool trigB = readyZ and not mitBreak and isB and low <= zTop and close <= zTop + atrVal * 1.25 and obOkB and bullReject and trend == 1 and close >= sessionVwap
+        bool trigS = readyZ and not mitBreak and not isB and high >= zBot and close >= zBot - atrVal * 1.25 and obOkS and bearReject and trend == -1 and close <= sessionVwap
+        bool poiRegOk = isB ? timeBullOk and bullRegime : timeBearOk and bearRegime
+        bool poiFire = allowPoiEntries and not fireEntry and baseCanEnter and poiRegOk
+        if trigB or trigS
+            drawPoiZone(zDir, zTop, zBot, zX1, zKind, bar_index, atrVal)
+            fireEntry := poiFire ? true : fireEntry
+            fireBuySide := poiFire ? isB : fireBuySide
+            fireReason := poiFire ? (zKind + (isB ? " CE" : " PE")) : fireReason
+            fireConf := poiFire ? 93 : fireConf
+        if mitBreak or trigB or trigS
+            array.remove(poiDir, idx)
+            array.remove(poiTop, idx)
+            array.remove(poiBot, idx)
+            array.remove(poiX1, idx)
+            array.remove(poiKind, idx)
+            array.remove(poiIsOb, idx)
+            array.remove(poiIsHtf, idx)
+
+if fireEntry
+    float rDist = effSlMult * atrVal
+    string fireGrade = fireConf >= 95 ? "S+" : "A+"
+    string confStr = showConfPct ? " [" + fireGrade + " " + str.tostring(fireConf) + "%]" : ""
+    string optBuyTag = isPutContract ? "BUY PE" : "BUY CE"
+    string idxBuyTag = optionLabels ? "Buy CE" : "BUY"
+    string idxSellTag = optionLabels ? "Buy PE" : "SELL"
+    string sideTagPre = fireEarly and earlyTagLabels ? "EARLY " : rangeBuySig or rangeSellSig ? "RANGE " : ""
+    string buyTxt = sideTagPre + (isOptionChart ? optBuyTag : idxBuyTag) + confStr
+    string sellTxt = sideTagPre + (isOptionChart ? "SHORT OPT" : idxSellTag) + confStr
+    earlySigCount += fireEarly ? 1 : 0
+    lastEarlyBar := fireEarly ? bar_index : lastEarlyBar
+    float callY = fireBuySide ? low - atrVal * 0.28 : high + atrVal * 0.28
+    callSt = fireBuySide ? label.style_label_up : label.style_label_down
+    color callBg = fireBuySide ? color.new(#10947F, 6) : color.new(#EE0B1F, 6)
+    string callTxt = fireBuySide ? buyTxt : sellTxt
+    label.new(bar_index, callY, callTxt, color=callBg, textcolor=#FFFFFF, style=callSt, size=size.small)
+    if not useNextBarOpen
+        trOpen := true
+        trDir := fireBuySide ? 1 : -1
+        trEntry := close
+        trInitSl := fireBuySide ? close - rDist : close + rDist
+        trTrailSl := trInitSl
+        trPeak := close
+        trRisk := rDist
+        trTp1 := fireBuySide ? close + rDist * rrTarget1 : close - rDist * rrTarget1
+        trTp2Ref := fireBuySide ? close + rDist * tp2RatchetR : close - rDist * tp2RatchetR
+        trTp2 := fireBuySide ? close + rDist * rrTarget2 : close - rDist * rrTarget2
+        trTp1Hit := false
+        trTp2Hit := false
+        trLock := false
+        trRange := fireRange
+        trTp2Booked := false
+        if fireRange
+            float iRisk = fireBuySide ? rngRiskBull : rngRiskBear
+            trRisk := math.max(iRisk, syminfo.mintick)
+            trInitSl := fireBuySide ? close - trRisk : close + trRisk
+            trTrailSl := trInitSl
+            trTp1 := fireBuySide ? close + trRisk * rangeTp1R : close - trRisk * rangeTp1R
+            trTp2Ref := fireBuySide ? close + trRisk : close - trRisk
+            trTp2 := fireBuySide ? math.max(close + trRisk * 1.20, rangeHi - 0.15 * atrVal) : math.min(close - trRisk * 1.20, rangeLo + 0.15 * atrVal)
+        trBarIdx := bar_index
+        trDayId := currentDayId
+        trStrike := isOptionChart ? syminfo.ticker : calcStrike(close, fireBuySide, strikeStep, lotUnits)
+        trReason := fireReason
+        trStatus := isOptionChart ? "GAMMA ACTIVE" : "RUNNING"
+    else
+        pendDir := fireBuySide ? 1 : -1
+        pendRisk := rDist
+        pendReason := fireReason
+        pendRange := fireRange
+    tradesToday += fireRange ? 0 : 1
+    rangeTradesToday += fireRange ? 1 : 0
+    evtBuy := fireBuySide
+    evtSell := not fireBuySide
+    evtRangeFade := fireRange
+
+color cCol = close >= open ? #10947F : #EE0B1F
+bool sigC = evtBuy or evtSell
+barcolor(hlSigBars and sigC ? #FFD54F : colorCandles ? cCol : na)
+
+var table topBrand = table.new(position.top_center, 1, 1, bgcolor=TRANSP)
+var table midWatermark = table.new(position.middle_center, 1, 1, bgcolor=TRANSP)
+var table smcDash = table.new(position.top_right, 2, 18, bgcolor=color.new(#0D1017, 8), border_color=color.new(structCol, 65), border_width=1)
+
+if barstate.islast
+    while array.size(liveBoxes) > 0
+        box.delete(array.pop(liveBoxes))
+    while array.size(liveLabels) > 0
+        label.delete(array.pop(liveLabels))
+    while array.size(liveLines) > 0
+        line.delete(array.pop(liveLines))
+    int rightEdge = bar_index + 10
+    int dStart = clampBar(dayStartBar, bar_index)
+    if showPdhPdl and timeframe.isintraday and hasValidPd
+        array.push(liveLines, line.new(dStart, pdhPrice, rightEdge, pdhPrice, color=color.new(#FFB74D, 35), style=line.style_dashed, width=1))
+        array.push(liveLabels, label.new(rightEdge, pdhPrice, "PDH", color=TRANSP, textcolor=#FFB74D, style=label.style_label_left, size=size.tiny))
+        array.push(liveLines, line.new(dStart, pdlPrice, rightEdge, pdlPrice, color=color.new(#4FC3F7, 35), style=line.style_dashed, width=1))
+        array.push(liveLabels, label.new(rightEdge, pdlPrice, "PDL", color=TRANSP, textcolor=#4FC3F7, style=label.style_label_left, size=size.tiny))
+    if showEqLine and not na(eqLevel)
+        array.push(liveLines, line.new(dStart, eqLevel, rightEdge, eqLevel, color=color.new(#B39DDB, 45), style=line.style_dotted, width=1))
+        array.push(liveLabels, label.new(rightEdge, eqLevel, "EQ 50%", color=TRANSP, textcolor=#CE93D8, style=label.style_label_left, size=size.tiny))
+    if showOrb and timeframe.isintraday and not na(orbHigh) and not na(orbLow)
+        color orbCol = color.new(structCol, 55)
+        color orbTxtCol = color.new(structCol, 20)
+        array.push(liveLines, line.new(dStart, orbHigh, rightEdge, orbHigh, color=orbCol, style=line.style_dotted, width=1))
+        array.push(liveLabels, label.new(rightEdge, orbHigh, "ORB H", color=TRANSP, textcolor=orbTxtCol, style=label.style_label_left, size=size.tiny))
+        array.push(liveLines, line.new(dStart, orbLow, rightEdge, orbLow, color=orbCol, style=line.style_dotted, width=1))
+        array.push(liveLabels, label.new(rightEdge, orbLow, "ORB L", color=TRANSP, textcolor=orbTxtCol, style=label.style_label_left, size=size.tiny))
+    if showStrongHl and trend == 1 and not na(protLow) and protLowBar > 0
+        int sBarL = clampBar(protLowBar, bar_index)
+        array.push(liveLines, line.new(sBarL, protLow, rightEdge, protLow, color=color.new(#00E676, 45), style=line.style_solid, width=1))
+        array.push(liveLabels, label.new(rightEdge, protLow, "Strong Low", color=TRANSP, textcolor=#69F0AE, style=label.style_label_left, size=size.tiny))
+    if showStrongHl and trend == -1 and not na(protHigh) and protHighBar > 0
+        int sBarH = clampBar(protHighBar, bar_index)
+        array.push(liveLines, line.new(sBarH, protHigh, rightEdge, protHigh, color=color.new(#FF5252, 45), style=line.style_solid, width=1))
+        array.push(liveLabels, label.new(rightEdge, protHigh, "Strong High", color=TRANSP, textcolor=#FF8A80, style=label.style_label_left, size=size.tiny))
+
+if barstate.islast and showLivePois
+    int remPois = array.size(poiDir)
+    int rightEdgeZ = bar_index + 10
+    if remPois > 0
+        bool drewBull = false
+        bool drewBear = false
+        bool drewHtf = false
+        for k = remPois - 1 to 0
+            int zDir = array.get(poiDir, k)
+            float zTop = array.get(poiTop, k)
+            float zBot = array.get(poiBot, k)
+            int zX1 = array.get(poiX1, k)
+            string zKind = array.get(poiKind, k)
+            bool zHtf = array.get(poiIsHtf, k)
+            bool pickB = not zHtf and zDir == 1 and not drewBull
+            bool pickS = not zHtf and zDir == -1 and not drewBear
+            bool useZ = zHtf and not drewHtf or pickB or pickS
+            drewHtf := useZ and zHtf ? true : drewHtf
+            drewBull := useZ and pickB ? true : drewBull
+            drewBear := useZ and pickS ? true : drewBear
+            if useZ
+                int lx = clampBar(zX1, bar_index)
+                bool above = zDir == -1
+                float ly = above ? zTop + atrVal * 0.14 : zBot - atrVal * 0.14
+                lst = above ? label.style_label_down : label.style_label_up
+                array.push(liveBoxes, box.new(lx, zTop, rightEdgeZ, zBot, border_color=zoneBorderCol, border_width=1, bgcolor=zoneFillCol))
+                array.push(liveLabels, label.new(int(math.round((lx + rightEdgeZ) * 0.5)), ly, zKind, color=TRANSP, textcolor=structCol, style=lst, size=txtSz))
+
+if barstate.islast and showRangeBox and timeframe.isintraday and not na(rangeHi) and not na(rangeLo)
+    int rngX1 = clampBar(bar_index - rangeLookback + 1, bar_index)
+    int rngX2 = bar_index + 10
+    color rngCol = chopRegime ? #FFD54F : #78909C
+    array.push(liveBoxes, box.new(rngX1, rangeHi, rngX2, rangeLo, border_color=color.new(rngCol, 55), border_width=1, bgcolor=color.new(rngCol, 94)))
+    array.push(liveLabels, label.new(rngX2, rangeHi, "RANGE H " + str.tostring(rangeHi, format.mintick), color=TRANSP, textcolor=rngCol, style=label.style_label_left, size=size.tiny))
+    array.push(liveLabels, label.new(rngX2, rangeLo, "RANGE L " + str.tostring(rangeLo, format.mintick), color=TRANSP, textcolor=rngCol, style=label.style_label_left, size=size.tiny))
+
+if barstate.islast and showTradePlan and trDir != 0 and not na(trEntry) and not na(trTrailSl)
+    int tx1 = clampBar(trBarIdx, bar_index)
+    int tx2 = bar_index + 12
+    float slDelta = trDir == 1 ? trTrailSl - trEntry : trEntry - trTrailSl
+    float tp1Pts = math.abs(trTp1 - trEntry)
+    float tp2RefPts = math.abs(trTp2Ref - trEntry)
+    float tp2Pts = math.abs(trTp2 - trEntry)
+    array.push(liveBoxes, box.new(tx1, math.max(trEntry, trTp2), tx2, math.min(trEntry, trTp2), border_color=color.new(#10947F, 55), border_width=1, bgcolor=color.new(#10947F, 86)))
+    array.push(liveBoxes, box.new(tx1, math.max(trEntry, trInitSl), tx2, math.min(trEntry, trInitSl), border_color=color.new(#EE0B1F, 55), border_width=1, bgcolor=color.new(#EE0B1F, 86)))
+    array.push(liveLines, line.new(tx1, trTrailSl, tx2, trTrailSl, color=#FFD54F, style=line.style_solid, width=2))
+    array.push(liveLines, line.new(tx1, trTp1, tx2, trTp1, color=color.new(#00E676, 30), style=line.style_dashed, width=1))
+    array.push(liveLines, line.new(tx1, trTp2Ref, tx2, trTp2Ref, color=color.new(#40C4FF, 35), style=line.style_dotted, width=1))
+    array.push(liveLines, line.new(tx1, trEntry, tx2, trEntry, color=structCol, style=line.style_solid, width=1))
+    string optTagP = isPutContract ? "BUY PE" : "BUY CE"
+    string idxTagP = trDir == 1 ? "BUY CE" : "BUY PE"
+    string sideTag = isOptionChart ? optTagP : idxTagP
+    string strikeNote = not isOptionChart and showStrikePlan ? " | Strike: " + trStrike : ""
+    string optDeltaEst = not isOptionChart and showStrikePlan ? " | Est Opt +" + str.tostring(tp2Pts * 0.62, "#.#") + "p" : ""
+    string slSgn = slDelta >= 0.0 ? "+" : ""
+    array.push(liveLabels, label.new(tx2, trEntry, sideTag + ": " + str.tostring(trEntry, format.mintick) + strikeNote, color=color.new(#161A25, 8), textcolor=structCol, style=label.style_label_left, size=size.tiny))
+    array.push(liveLabels, label.new(tx2, trTrailSl, "TRAIL SL: " + str.tostring(trTrailSl, format.mintick) + " (" + slSgn + str.tostring(slDelta, "#.#") + "p)", color=color.new(#3B220D, 8), textcolor=#FFD54F, style=label.style_label_left, size=size.tiny))
+    array.push(liveLabels, label.new(tx2, trTp1, "TP1 (+0.2R BE): " + str.tostring(trTp1, format.mintick) + " (+" + str.tostring(tp1Pts, "#.#") + "p)", color=color.new(#0C3226, 8), textcolor=#69F0AE, style=label.style_label_left, size=size.tiny))
+    array.push(liveLabels, label.new(tx2, trTp2Ref, "2R Floor (+0.85R): " + str.tostring(trTp2Ref, format.mintick) + " (+" + str.tostring(tp2RefPts, "#.#") + "p)", color=color.new(#09293C, 8), textcolor=#80D8FF, style=label.style_label_left, size=size.tiny))
+    array.push(liveLabels, label.new(tx2, trTp2, "Climax Ref: " + str.tostring(tp2Pts > 0.0 ? trTp2 : trEntry, format.mintick) + " (+" + str.tostring(tp2Pts, "#.#") + "p" + optDeltaEst + ")", color=color.new(#0C3B2E, 8), textcolor=#00E676, style=label.style_label_left, size=size.tiny))
+
+if barstate.islast and showWatermark
+    string stackedWm = str.replace_all(watermarkTxt, " ", "\n")
+    table.cell(topBrand, 0, 0, stackedWm, text_color=color.rgb(245, 214, 78), text_size=size.normal)
+    table.cell(midWatermark, 0, 0, stackedWm, text_color=color.new(color.rgb(212, 192, 68), 84), text_size=size.huge)
+
+if barstate.islast and showDashboard
+    string tA = isSensex ? "SENSEX PRO v9 [APEX]" : isBankNifty ? "BANKNIFTY PRO v9 [APEX]" : ""
+    string tB = isFinNifty ? "FINNIFTY PRO v9 [APEX]" : isBankEx ? "BANKEX PRO v9 [APEX]" : ""
+    string tC = str.contains(upperSym, "NIFTY") ? "NIFTY 50 PRO v9 [APEX]" : syminfo.ticker + " PRO v9"
+    string idxTitle = tA != "" ? tA : tB != "" ? tB : tC
+    string optTypeH = isPutContract ? "PE PUT" : "CE CALL"
+    string modeTitle = isOptionChart ? "DIRECT OPTION v9 (" + optTypeH + ")" : idxTitle
+    int domScore = bullScore >= bearScore ? bullScore : bearScore
+    string clvDisp = str.tostring(math.max(clvBull, clvBear) * 100.0, "#")
+    string readyTxt = str.tostring(domScore) + "/9 SCORE | ER " + str.tostring(erVal10, "#.##") + " | CLV " + clvDisp + "%"
+    string bRegH = isOptionChart ? "GAMMA IGNITION" : "BULL IGNITION (CE)"
+    string regTxt = bullRegime ? bRegH : bearRegime ? "BEAR IGNITION (PE)" : "COILING / THETA GUARD"
+    string wkPctStr = str.tostring(wkActiveFrac * 100.0, "#")
+    string velStr = str.tostring(atr5mPct, "#.#")
+    bool idxExpNow = bullPdOrExpand or bearPdOrExpand
+    string optInLiq = itoGammaOk ? "GAMMA ACTIVE (Wk " + wkPctStr + "% | " + velStr + "%)" : "COILING (" + velStr + "% vs " + str.tostring(effOptGamMin, "#.#") + "%)"
+    string optLiqTxt = wkActiveFrac < optWkMin ? "ILLIQUID STRIKE (SHIELDED)" : close < optMinPremium ? "LOW PREMIUM SHIELD (<" + str.tostring(optMinPremium, "#") + ")" : optInLiq
+    string idxExpTxt = idxExpNow ? "EXPANDING (" + str.tostring(atrVal / math.max(atrBaseline, 0.000001), "#.##") + "x)" : "COMPRESSED (NO CHOP)"
+    string liqTxt = isOptionChart ? optLiqTxt : idxExpTxt
+    color rdyCol = domScore >= 8 ? #00E676 : structCol
+    color regCol = bullRegime ? #00E676 : bearRegime ? #FF5252 : #FFD54F
+    color liqCol = (isOptionChart ? itoGammaOk : idxExpNow) ? #00E676 : #FFD54F
+    string vwapTxt = (close >= sessionVwap ? "ABOVE " : "BELOW ") + str.tostring(sessionVwap, format.mintick) + " (+/-" + str.tostring(vwapSigma, "#.#") + ")"
+    string emaTxt = ema9 > ema21 and ema21 > ema50 ? "BULL STACK (9>21>50)" : ema9 < ema21 and ema21 < ema50 ? "BEAR STACK (9<21<50)" : "MIXED / NEUTRAL"
+    string stTxt = stEntryDir == 1 ? "BULLISH | Trail " + str.tostring(stTrailLine, format.mintick) : "BEARISH | Trail " + str.tostring(stTrailLine, format.mintick)
+    string pdTxt = hasValidPd ? "PDH " + str.tostring(pdhPrice, format.mintick) + " | PDL " + str.tostring(pdlPrice, format.mintick) : "WARMING UP SESSION"
+    string strikeTxt = trDir != 0 ? trStrike : isOptionChart ? syminfo.ticker + " (" + str.tostring(lotUnits) + " qty)" : calcStrike(close, bullScore >= bearScore, strikeStep, lotUnits)
+    float livePtsNow = trOpen ? (trDir == 1 ? close - trEntry : trEntry - close) : trLastPts
+    string statusTxt = trOpen ? trStatus + " (" + (livePtsNow >= 0.0 ? "+" : "") + str.tostring(livePtsNow, "#.#") + "p)" : trStatus
+    float winRate = btTrades > 0 ? btWins * 100.0 / btTrades : 0.0
+    float pfVal = btLossPct > 0.0 ? btWinPct / btLossPct : btWinPct > 0.0 ? 99.9 : 0.0
+    float netPts = btWinPts - btLossPts
+    string btSummary = str.tostring(btTrades) + " Tr | WR " + str.tostring(winRate, "#.#") + "% | PF " + (pfVal >= 99.0 ? "INF" : str.tostring(pfVal, "#.##")) + " | " + (netPts >= 0.0 ? "+" : "") + str.tostring(netPts, "#.#") + "p"
+    color auditCol = netPts >= 0.0 ? #00E676 : #FF8A80
+    int preLeft = preTtlBars - (bar_index - preBar)
+    string preHudTxt = preDir == 1 ? "ARMED BUY CE > " + str.tostring(preLevel, format.mintick) + " (" + str.tostring(preLeft) + "b)" : preDir == -1 ? "ARMED BUY PE < " + str.tostring(preLevel, format.mintick) + " (" + str.tostring(preLeft) + "b)" : preArmCount > 0 ? "SCANNING | ARMED " + str.tostring(preArmCount) + " | FIRED " + str.tostring(preFireCount) : "SCANNING SQUEEZE"
+    color preHudCol = preDir != 0 ? #FFD54F : preFireCount > 0 ? #69F0AE : #9AA4B5
+    string modeHudTxt = chopRegime ? "SIDEWAYS FADE (ADX " + str.tostring(gapSafeAdx, "#.#") + " | ER " + str.tostring(erVal10, "#.##") + ")" : trendRegime ? "TREND IGNITION (ADX " + str.tostring(gapSafeAdx, "#.#") + ")" : "NEUTRAL / WARMING"
+    color modeHudCol = chopRegime ? #FFD54F : trendRegime ? #69F0AE : #9AA4B5
+    string rangeHudTxt = timeframe.isintraday ? str.tostring(rangeLo, format.mintick) + " - " + str.tostring(rangeHi, format.mintick) + " (" + str.tostring(rangeWidthAtr, "#.##") + " ATR)" : "---"
+    string earlyHudTxt = earlyOn ? "ON | " + str.tostring(microLen) + "-Bar Break | " + str.tostring(earlySigCount) + " fired | CE > " + str.tostring(microBuyLvl, format.mintick) : "OFF (Pivot Break Only)"
+    color earlyHudCol = earlyOn ? #69F0AE : #9AA4B5
+    string blockTxt = not warmupReady ? "WARMUP " + str.tostring(bar_index + 1) + "/205" : trOpen ? "IN TRADE - exit first" : tradesToday >= maxTradesPerDay ? "DAY CAP " + str.tostring(tradesToday) + "/" + str.tostring(maxTradesPerDay) : bar_index <= lastClosedBar + cooldownBars ? "COOLDOWN " + str.tostring(lastClosedBar + cooldownBars - bar_index) + "b" : not orbWidthOk ? "ORB TOO WIDE" : chopRegime ? "SIDEWAYS CHOP - no trend entry" : not erRatioOk ? "LOW ER - no trend" : "ARMED | CE > " + str.tostring(microBuyLvl, format.mintick) + " | PE < " + str.tostring(microSellLvl, format.mintick)
+    color hdrBg = color.new(#161B26, 2)
+    color rowBg = color.new(#0E1118, 6)
+    color lblFg = #9AA4B5
+    table.cell(smcDash, 0, 0, "S.O.T APEX v9 B25OCT", bgcolor=hdrBg, text_color=structCol, text_size=size.tiny)
+    table.cell(smcDash, 1, 0, modeTitle, bgcolor=hdrBg, text_color=#FFFFFF, text_size=size.tiny)
+    table.cell(smcDash, 0, 1, "Apex Readiness", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 1, readyTxt, bgcolor=rowBg, text_color=rdyCol, text_size=size.tiny)
+    table.cell(smcDash, 0, 2, "Regime Engine", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 2, regTxt, bgcolor=rowBg, text_color=regCol, text_size=size.tiny)
+    table.cell(smcDash, 0, 3, "Gamma / Expansion", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 3, liqTxt, bgcolor=rowBg, text_color=liqCol, text_size=size.tiny)
+    table.cell(smcDash, 0, 4, "Session VWAP", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 4, vwapTxt, bgcolor=rowBg, text_color=close >= sessionVwap ? #69F0AE : #FF8A80, text_size=size.tiny)
+    table.cell(smcDash, 0, 5, "EMA Ribbon", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 5, emaTxt, bgcolor=rowBg, text_color=ema9 > ema21 ? #69F0AE : #FF8A80, text_size=size.tiny)
+    table.cell(smcDash, 0, 6, "SuperTrend", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 6, stTxt, bgcolor=rowBg, text_color=stEntryDir == 1 ? #69F0AE : #FF8A80, text_size=size.tiny)
+    table.cell(smcDash, 0, 7, "RSI / DI / ADX", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 7, "RSI " + str.tostring(rsiVal, "#.#") + " | ADX " + str.tostring(gapSafeAdx, "#.#"), bgcolor=rowBg, text_color=#E0E6ED, text_size=size.tiny)
+    table.cell(smcDash, 0, 8, "Key Session Levels", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 8, pdTxt, bgcolor=rowBg, text_color=#B0BEC5, text_size=size.tiny)
+    table.cell(smcDash, 0, 9, "Auto ITM-1 Strike", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 9, strikeTxt, bgcolor=rowBg, text_color=structCol, text_size=size.tiny)
+    table.cell(smcDash, 0, 10, "Active Trade", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 10, statusTxt, bgcolor=rowBg, text_color=trOpen ? #FFD54F : #E0E6ED, text_size=size.tiny)
+    table.cell(smcDash, 0, 11, "Live Trail / TP2", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 11, trDir != 0 ? "SL " + str.tostring(trTrailSl, format.mintick) + " | 2R " + str.tostring(trTp2Ref, format.mintick) : "---", bgcolor=rowBg, text_color=#80D8FF, text_size=size.tiny)
+    table.cell(smcDash, 0, 12, "Verified Audit", bgcolor=hdrBg, text_color=structCol, text_size=size.tiny)
+    table.cell(smcDash, 1, 12, btSummary, bgcolor=hdrBg, text_color=auditCol, text_size=size.tiny)
+    table.cell(smcDash, 0, 13, "v9 Pre-Signal", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 13, preHudTxt, bgcolor=rowBg, text_color=preHudCol, text_size=size.tiny)
+    table.cell(smcDash, 0, 14, "Market Mode", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 14, modeHudTxt, bgcolor=rowBg, text_color=modeHudCol, text_size=size.tiny)
+    table.cell(smcDash, 0, 15, "Range Box", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 15, rangeHudTxt, bgcolor=rowBg, text_color=#B0BEC5, text_size=size.tiny)
+    table.cell(smcDash, 0, 16, "v9.1 Early Trigger", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 16, earlyHudTxt, bgcolor=rowBg, text_color=earlyHudCol, text_size=size.tiny)
+    table.cell(smcDash, 0, 17, "Why No Signal", bgcolor=hdrBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 17, blockTxt, bgcolor=hdrBg, text_color=#FFD54F, text_size=size.tiny)
+
+// =============================================================================
+// 7. TRADINGVIEW ALERTS
+// =============================================================================
+alertcondition(evtBuy, title="S.O.T Apex v9: Buy Signal (Index CE / Option Gamma)", message="S.O.T SMC Pro v9 [Apex]: High-Confluence Bullish Entry Triggered on {{ticker}} ({{interval}})")
+alertcondition(evtSell, title="S.O.T Apex v9: Sell Signal (Index PE / Short Breakdown)", message="S.O.T SMC Pro v9 [Apex]: High-Confluence Bearish Entry Triggered on {{ticker}} ({{interval}})")
+alertcondition(evtPartial, title="S.O.T Apex v9: TP1 Reached (+0.20R Fee-Safe BE Lock)", message="S.O.T SMC Pro v9 [Apex]: Tier-1 Target Reached - +0.20R Fee-Safe Stop Armed on {{ticker}} ({{interval}})")
+alertcondition(evtExit, title="S.O.T Apex v9: Position Closed (Trailing Stop / Square-Off)", message="S.O.T SMC Pro v9 [Apex]: Trade Closed on {{ticker}} ({{interval}})")
+alertcondition(evtSweep, title="S.O.T Apex v9: Institutional Liquidity Swipe", message="S.O.T SMC Pro v9 [Apex]: Institutional Liquidity Swipe Detected on {{ticker}} ({{interval}})")
+alertcondition(evtBos or evtChoch, title="S.O.T Apex v9: Market Structure Break (BOS / CHoCH)", message="S.O.T SMC Pro v9 [Apex]: BOS / CHoCH Confirmed on {{ticker}} ({{interval}})")
+alertcondition(evtPreBuyArm, title="S.O.T Apex v9: Pre-Signal ARMED (Buy CE Radar)", message="S.O.T v9 Pre-Signal ARMED: compression breakout setup forming above key level on {{ticker}} ({{interval}})")
+alertcondition(evtPreSellArm, title="S.O.T Apex v9: Pre-Signal ARMED (Buy PE Radar)", message="S.O.T v9 Pre-Signal ARMED: compression breakdown setup forming below key level on {{ticker}} ({{interval}})")
+alertcondition(evtPreBuyFire, title="S.O.T Apex v9: EARLY BUY CE (Pre-Break Confirmed)", message="S.O.T v9 EARLY ENTRY: pre-break confirmed - bullish sniper trigger on {{ticker}} ({{interval}})")
+alertcondition(evtPreSellFire, title="S.O.T Apex v9: EARLY BUY PE (Pre-Break Confirmed)", message="S.O.T v9 EARLY ENTRY: pre-break confirmed - bearish sniper trigger on {{ticker}} ({{interval}})")
+alertcondition(evtEarlyBuyNow, title="S.O.T Apex v9.1: EARLY BUY CE (Micro Break, Jaldi Entry)", message="S.O.T v9.1 EARLY ENTRY: micro-break bullish trigger on {{ticker}} ({{interval}}) - enter before the move extends")
+alertcondition(evtEarlySellNow, title="S.O.T Apex v9.1: EARLY BUY PE (Micro Break, Jaldi Entry)", message="S.O.T v9.1 EARLY ENTRY: micro-break bearish trigger on {{ticker}} ({{interval}}) - enter before the move extends")
+alertcondition(evtRangeFade, title="S.O.T Apex v9: Sideways Range Fade Trigger", message="S.O.T v9 RANGE FADE: sideways edge rejection trade triggered on {{ticker}} ({{interval}})")
