@@ -51,6 +51,10 @@ so the executed logic is the shipped logic.
 | Config | 2024 | 2023 | 2022 | 2025 |
 |---|---|---|---|---|
 | `Early Trigger = Micro 5-Bar` (default) | 259 Tr · 47.9% · PF 1.47 · +2,727.1p | 265 Tr · 49.8% · PF 1.75 · +2,394.3p | 265 Tr · 44.2% · PF 1.32 · +1,619.5p | 259 Tr · 43.6% · PF 1.13 · +683.2p |
+
+> **v9.2 baseline (current file, defaults `Partial=0 / Stall=OFF / rrTarget2=4.0 / SL=3.0x`):** 2024 `239 Tr · 46.9% · PF 1.59 · +3,497.6p` · 2023 `256 · 50.0% · 1.80 · +2,859.3p` · 2022 `252 · 45.6% · 1.38 · +1,948.4p` · 2025 `252 · 47.2% · 1.21 · +1,175.3p` (`999 Tr · 47.4% · PF 1.47 · +9,480.7p` total, vs v9.1 `1,048 Tr · 46.4% · 1.39 · +7,424.0p`).
+> PineTS note: `pinets@0.13.0` no longer fires entries for this script (resolves `syminfo.*` to `undefined`); the known-good engine is **`pinets@0.9.34` with the `syminfo` shim**, which reproduces the v9.1 baseline exactly.
+
 | `Early Trigger = Off (Pivot Break Only)` | 63 Tr · 54.0% · PF 1.67 · +1,199.7p | 22 Tr · 59.1% · PF 1.72 · +232.8p | 53 Tr · 45.3% · PF 1.36 · +506.4p | 47 Tr · 46.8% · PF 1.22 · +292.2p |
 
 Any deviation from this table means the file was edited — do not ship without re-running both gates.

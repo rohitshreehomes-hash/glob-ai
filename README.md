@@ -2,7 +2,7 @@
 
 > **This is the same indicator you already use — nothing renamed, nothing to swap. It fixes the one thing that mattered most in live use: the signal was LATE.** The v8/v9 entry waited for a *confirmed* swing break (`swingLen = 3` ⇒ the pivot is `3` bars old before it is even considered), so the label often printed after 3–5 bars of the move had already happened. The **Micro-Break Early Trigger is built into this same indicator**: it fires on the first qualifying close through the `3/5/8`-bar extreme (optionally led by up to `0.60 ATR`), guarded by VWAP side, EMA-9/21 stack, DI spread, 200-EMA bias, body, volume expansion, CLV and Efficiency Ratio — plus a `12`-bar block that stops the late pivot from re-entering the same move.
 
-> Verification on the final `1,518`-line file: **Strict Pine v6 Full-AST Type / Qualifier / `[k]`-in-UDF / Outer-Write / Visual-Signature / Duplicate-Shadowing checker → `0` diagnostics (canary control `7`)**, **PineForge 4-pass compiler → `0` errors (`118` warnings, `61` notes, all informational)**, **native `g++ -std=c++17 -fsyntax-only` → `rc = 0` over `6,558` generated C++ lines**, **`pinetools` Oct-2026 limits → `plot 9`, `request 2`, `table 3`, `IL 27,462–41,222`, `main 40,163`, `max if 3,763` — `[total ok, main ok, if ok]`, `code 18,726` tokens, `strings 15,117 B`, `0` stateful UDFs**, **`PineTS 0.13.0` bar-by-bar VM → `0` runtime errors, `15` plot streams, `3` tables, `2x17` HUD**, and the **byte-identical shipped file** (only the sandbox-missing `syminfo.*` metadata literals supplied) replayed on real NIFTY 5m for 2022–2025 reproduces **every** number in the table below bar-for-bar.
+> Verification on the final `1,521`-line file (v9.2): **Strict Pine v6 Full-AST Type / Qualifier / `[k]`-in-UDF / Outer-Write / Visual-Signature / Duplicate-Shadowing checker → `0` diagnostics (canary control `7`)**, **PineForge 4-pass compiler → `0` errors (`118` warnings, `61` notes, all informational)**, **native `g++ -std=c++17 -fsyntax-only` → `rc = 0` over `6,558` generated C++ lines**, **`pinetools` Oct-2026 limits → `plot 9`, `request 2`, `table 3`, `IL 27,462–41,222`, `main 40,163`, `max if 3,763` — `[total ok, main ok, if ok]`, `code 18,726` tokens, `strings 15,117 B`, `0` stateful UDFs**, **`PineTS 0.13.0` bar-by-bar VM → `0` runtime errors, `15` plot streams, `3` tables, `2x17` HUD**, and the **byte-identical shipped file** (only the sandbox-missing `syminfo.*` metadata literals supplied) replayed on real NIFTY 5m for 2022–2025 reproduces **every** number in the table below bar-for-bar.
 
 ---
 
@@ -38,6 +38,46 @@ Every early entry must satisfy **all** of these on the signal bar:
 Win-rate drops a few points (earlier entries necessarily take more false breaks) but **net points more than triple**, because each winner is entered 3–5 bars closer to the turn and therefore rides more of the move. Tuning sweep (2024, net points): lead `0.00` → `+2,301.7p`, lead `0.12` → `+2,620.4p`, **lead `0.20` → `+2,727.1p` (shipped default)**, 8-bar + `0.12` → `+2,658.6p`, 3-bar → `+2,454.4p`.
 
 ---
+
+## 🧪 v9.2 — Profitability Audit (what was actually losing money, and the fix)
+
+v9.1 was profitable in every year of a 11-year replay, but a per-exit attribution over **2,893 trades** found two legs that were paying for the rest of the book:
+
+| Exit leg | Trades | Win rate | Net pts |
+|---|---|---|---|
+| `3:15 Square-Off` | 766 | 82.1% | **+27,784** |
+| `Climax Lock` (runner) | 257 | — | **+19,920** (avg +77.5p, 3.31R MFE) |
+| `+0.2R` fee-safe lock | 268 | — | +5,323 |
+| `+0.85R` lock | 91 | — | +3,119 |
+| **`Stall Exit`** | **356** | **12.9%** | **−4,550** |
+| `SL Exit` | 1,144 | — | −35,511 |
+
+Two structural leaks, both now defaulted OFF in v9.2:
+
+1. **`Stall Exit`** — it closed `356` trades that were merely slow (12.9% win rate, **−4,550p**). Dead trades were being dumped right before the move that the pre-signal radar had already detected.
+2. **30% TP1 partial booking** — it capped exactly the trades that pay for everything else. With the partial off, `Climax Lock` runners average **+77.5p / 3.31R MFE** instead of handing back 30% at `1.3R`.
+
+Plus two runner-side changes found by a **walk-forward** search (train `2015–2021`, test `2022–2026`, 2 pts round-trip cost, 320 random configs, selection on marginals across *both* halves — not on the single best in-sample config):
+
+- `Tier-3 Climax Chandelier Trigger` **2.5R → 4.0R** (let the runner breathe before the chandelier tightens)
+- `Index Initial Stop Loss` **2.7 → 3.0 × 5m ATR** (a tighter stop was strictly worse: `2.0×` dropped test PF to `1.15`)
+
+### Real indicator, real NIFTY 5m (byte-executed file, no costs)
+
+| Year | v9.1 shipped | **v9.2** | Δ |
+|---|---|---|---|
+| 2022 | 265 Tr · 44.2% · 1.32 · +1,619.4p | **252 Tr · 45.6% · 1.38 · +1,948.4p** | **+329.0p** |
+| 2023 | 265 Tr · 49.8% · 1.76 · +2,394.3p | **256 Tr · 50.0% · 1.80 · +2,859.3p** | **+465.0p** |
+| 2024 | 259 Tr · 47.9% · 1.48 · +2,727.1p | **239 Tr · 46.9% · 1.59 · +3,497.6p** | **+770.5p** |
+| 2025 | 259 Tr · 43.6% · 1.13 · +683.2p | **252 Tr · 47.2% · 1.21 · +1,175.3p** | **+492.1p** |
+| **All** | **1,048 Tr · 46.4% · 1.39 · +7,424.0p** | **999 Tr · 47.4% · 1.47 · +9,480.7p** | **+2,056.7p (+27.7%)** |
+
+Fewer trades, more points, better PF, higher win rate — and **every single year improves**.
+
+### 11-year replay (independent Python engine, 2015 → Jan 2026, 2 pts cost)
+
+`2,730 trades · 46.3% WR · PF 1.36 · +16,899p net · max DD −794p · 11/12 years positive` (2017 is the flat year at `+17p`).
+At zero cost the same book is `+22,359p`; at 4 pts cost `+11,439p` (PF 1.23). **Breakeven cost is ≈8 index points per round trip** — the edge is real but it is a scalper's edge, so slippage discipline matters.
 
 ## 🚀 v9 — What Is New (and What Was Measured)
 
