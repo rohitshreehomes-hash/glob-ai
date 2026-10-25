@@ -1,0 +1,206 @@
+//@version=5
+indicator("SMC AI Indicator — Liquidity • FVG • OB • IDM • BOS • CHoCH", shorttitle="SMC AI", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Smart Money Concepts (SMC) indicator — TradingView Pine Script v5
+//  Detects: Fair Value Gaps, Order Blocks, IDM zones, BOS / CHoCH,
+//  Liquidity Swipes and Buy / Sell signals — matching the reference chart.
+//  ─────────────────────────────────────────────────────────────────────────────
+
+// ═════════════════════════════════════════════════════════════════════════════
+// INPUTS
+// ═════════════════════════════════════════════════════════════════════════════
+grpFVG   = "📐 Fair Value Gap (FVG)"
+grpOB    = "📦 Order Block / IDM"
+grpStruct= "🏗️ Structure (BOS • CHoCH • Liquidity)"
+grpSig   = "🔔 Buy / Sell Signals"
+
+showFVG    = input.bool(true, "Show FVG Zones", group=grpFVG)
+fvgKeep    = input.int(120, "FVG Zone Keep (bars)", min=10, group=grpFVG)
+
+showOB     = input.bool(true, "Show Order Blocks", group=grpOB)
+showIDM    = input.bool(true, "Show IDM Zones", group=grpOB)
+structLook = input.int(10, "Structure / Swing Lookback", min=3, group=grpOB)
+impulseMult= input.float(1.5, "Impulse Body Multiplier", min=0.5, step=0.1, group=grpOB)
+zoneKeep   = input.int(120, "Zone Keep (bars)", min=10, group=grpOB)
+
+showBOS = input.bool(true, "Show BOS / CHoCH Labels", group=grpStruct)
+showLiq = input.bool(true, "Show Liquidity Swipe", group=grpStruct)
+
+showSig = input.bool(true, "Show Buy / Sell Signals", group=grpSig)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// COLORS
+// ═════════════════════════════════════════════════════════════════════════════
+cBullFVG = color.new(color.green, 70)
+cBearFVG = color.new(color.red,   70)
+cBullOB  = color.new(color.green, 80)
+cBearOB  = color.new(color.red,   80)
+cIDM     = color.new(color.orange,80)
+cLiqBull = color.green
+cLiqBear = color.red
+cSigBull = color.green
+cSigBear = color.red
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 1. FAIR VALUE GAP (FVG)
+//    Bullish FVG : low[2] > high[0]   → zone between high[0] (bottom) and low[2] (top)
+//    Bearish FVG : high[2] < low[0]   → zone between low[0] (top) and high[2] (bottom)
+// ═════════════════════════════════════════════════════════════════════════════
+bullishFVG = low[2] > high[0]
+bearishFVG = high[2] < low[0]
+
+if showFVG and bullishFVG
+    box.new(bar_index[2], low[2], bar_index[2] + fvgKeep, high[0], bgcolor=cBullFVG, border_color=cBullFVG, border_width=1)
+    label.new(bar_index[2], low[2], "FVG", style=label.style_label_up, color=cBullFVG, textcolor=color.white, size=size.small, textalign=text.align_center)
+
+if showFVG and bearishFVG
+    box.new(bar_index[2], high[2], bar_index[2] + fvgKeep, low[0], bgcolor=cBearFVG, border_color=cBearFVG, border_width=1)
+    label.new(bar_index[2], high[2], "FVG", style=label.style_label_down, color=cBearFVG, textcolor=color.white, size=size.small, textalign=text.align_center)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 2. MARKET STRUCTURE — SWING POINTS + BOS / CHoCH
+// ═════════════════════════════════════════════════════════════════════════════
+ph = ta.pivothigh(high, structLook, structLook)
+pl = ta.pivotlow(low,  structLook, structLook)
+
+var float lastPH = na
+var float lastPL = na
+var int   structDir = 0   // 1 = bullish, -1 = bearish, 0 = neutral
+
+if not na(ph)
+    lastPH := ph
+    structDir := 1
+if not na(pl)
+    lastPL := pl
+    structDir := -1
+
+// Break of Structure
+bullishBOS = not na(lastPH) and close > lastPH
+bearishBOS = not na(lastPL) and close < lastPL
+
+// Change of Character = first BOS in the opposite direction of the prior structure
+bullishCHOCH = bullishBOS and structDir[1] == -1
+bearishCHOCH = bearishBOS and structDir[1] == 1
+
+if showBOS
+    if bullishCHOCH
+        label.new(bar_index, high, "Choch", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+    else if bullishBOS
+        label.new(bar_index, high, "BoS", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+
+    if bearishCHOCH
+        label.new(bar_index, low, "Choch", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
+    else if bearishBOS
+        label.new(bar_index, low, "BoS", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 3. ORDER BLOCKS
+//    Impulse candle that breaks structure → last opposite-colored candle = OB
+// ═════════════════════════════════════════════════════════════════════════════
+body     = math.abs(close - open)
+avgBody  = ta.sma(body, 20)
+
+strongUp   = close > open and body > avgBody * impulseMult
+strongDown = close < open and body > avgBody * impulseMult
+
+if showOB and strongDown and low < ta.lowest(low, structLook)[1]
+    for i = 1 to 10
+        if close[i] > open[i]              // last bullish candle = Bearish Order Block
+            box.new(bar_index - i, high[i], bar_index - i + zoneKeep, low[i], bgcolor=cBearOB, border_color=cBearOB, border_width=1)
+            label.new(bar_index - i, high[i], "Order Block", style=label.style_label_down, color=cBearOB, textcolor=color.white, size=size.small)
+            break
+
+if showOB and strongUp and high > ta.highest(high, structLook)[1]
+    for i = 1 to 10
+        if close[i] < open[i]              // last bearish candle = Bullish Order Block
+            box.new(bar_index - i, high[i], bar_index - i + zoneKeep, low[i], bgcolor=cBullOB, border_color=cBullOB, border_width=1)
+            label.new(bar_index - i, low[i], "Order Block", style=label.style_label_up, color=cBullOB, textcolor=color.white, size=size.small)
+            break
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 4. IDM — Institutional Delivery / Origin Zone (marked at swing origin)
+// ═════════════════════════════════════════════════════════════════════════════
+if showIDM and not na(ph)
+    box.new(bar_index - structLook, high[structLook], bar_index - structLook + zoneKeep, low[structLook], bgcolor=cIDM, border_color=cIDM, border_width=1)
+    label.new(bar_index - structLook, high[structLook], "IDM", style=label.style_label_up, color=cIDM, textcolor=color.white, size=size.small)
+
+if showIDM and not na(pl)
+    box.new(bar_index - structLook, high[structLook], bar_index - structLook + zoneKeep, low[structLook], bgcolor=cIDM, border_color=cIDM, border_width=1)
+    label.new(bar_index - structLook, low[structLook], "IDM", style=label.style_label_down, color=cIDM, textcolor=color.white, size=size.small)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 5. LIQUIDITY SWIPE
+//    Price takes out a recent swing high/low (sweeps stops) then closes back inside.
+// ═════════════════════════════════════════════════════════════════════════════
+recentHigh = ta.highest(high, structLook)[1]
+recentLow  = ta.lowest(low,  structLook)[1]
+
+liqSweepHigh = high > recentHigh and close < recentHigh   // buy-side liquidity taken → rejected
+liqSweepLow  = low < recentLow  and close > recentLow    // sell-side liquidity taken → rejected
+
+if showLiq and liqSweepHigh
+    label.new(bar_index, high, "liquidity swipe", style=label.style_label_down, color=cLiqBear, textcolor=color.white, size=size.small)
+    line.new(bar_index - 1, recentHigh, bar_index, recentHigh, color=cLiqBear, width=1, style=line.style_dashed)
+
+if showLiq and liqSweepLow
+    label.new(bar_index, low, "liquidity swipe", style=label.style_label_up, color=cLiqBull, textcolor=color.white, size=size.small)
+    line.new(bar_index - 1, recentLow, bar_index, recentLow, color=cLiqBull, width=1, style=line.style_dashed)
+
+// Order Flow tags on strong impulse candles
+if strongUp
+    label.new(bar_index, high, "OF", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.tiny)
+if strongDown
+    label.new(bar_index, low, "OF", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.tiny)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 6. WEEKLY FVG (higher-timeframe confluence)
+// ═════════════════════════════════════════════════════════════════════════════
+[wH, wL, wO, wC] = request.security(syminfo.tickerid, "W", [high, low, open, close], lookahead=bar_merge.lookahead_off)
+
+weeklyBull = wL[2] > wH[0]
+weeklyBear = wH[2] < wL[0]
+
+var bool weeklyBullDrawn = false
+var bool weeklyBearDrawn = false
+
+if showFVG and weeklyBull and not weeklyBullDrawn
+    line.new(bar_index, wH[0], bar_index + 400, wH[0], color=cBullFVG, width=1, style=line.style_dashed)
+    line.new(bar_index, wL[2], bar_index + 400, wL[2], color=cBullFVG, width=1, style=line.style_dashed)
+    label.new(bar_index, wL[2], "weekly FVG", style=label.style_label_up, color=cBullFVG, textcolor=color.white, size=size.small)
+    weeklyBullDrawn := true
+if not weeklyBull
+    weeklyBullDrawn := false
+
+if showFVG and weeklyBear and not weeklyBearDrawn
+    line.new(bar_index, wL[0], bar_index + 400, wL[0], color=cBearFVG, width=1, style=line.style_dashed)
+    line.new(bar_index, wH[2], bar_index + 400, wH[2], color=cBearFVG, width=1, style=line.style_dashed)
+    label.new(bar_index, wH[2], "weekly FVG", style=label.style_label_down, color=cBearFVG, textcolor=color.white, size=size.small)
+    weeklyBearDrawn := true
+if not weeklyBear
+    weeklyBearDrawn := false
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 7. BUY / SELL SIGNALS
+//    Buy  : bullish BOS/CHoCH + sell-side liquidity sweep
+//    Sell : bearish BOS/CHoCH + buy-side liquidity sweep
+// ═════════════════════════════════════════════════════════════════════════════
+buySignal  = showSig and (bullishCHOCH or bullishBOS) and liqSweepLow
+sellSignal = showSig and (bearishCHOCH or bearishBOS) and liqSweepHigh
+
+if showSig and buySignal
+    label.new(bar_index, low, "Buy", style=label.style_label_up, color=cSigBull, textcolor=color.white, size=size.small)
+    plotshape(buySignal, title="Buy Signal", style=shape.triangleup, location=location.belowbar, color=cSigBull, size=size.small)
+
+if showSig and sellSignal
+    label.new(bar_index, high, "sell", style=label.style_label_down, color=cSigBear, textcolor=color.white, size=size.small)
+    plotshape(sellSignal, title="Sell Signal", style=shape.triangledown, location=location.abovebar, color=cSigBear, size=size.small)
+
+// Structure background tint
+bgcolor(structDir == 1 ? color.new(color.green, 95) : structDir == -1 ? color.new(color.red, 95) : na)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ALERTS
+// ═════════════════════════════════════════════════════════════════════════════
+alert_condition(buySignal,  title="SMC AI — Buy Signal",  message="SMC AI: Buy Signal  {{close}}  {{ticker}}")
+alert_condition(sellSignal, title="SMC AI — Sell Signal", message="SMC AI: Sell Signal {{close}}  {{ticker}}")
