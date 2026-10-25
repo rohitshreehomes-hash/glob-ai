@@ -235,8 +235,9 @@ Built with:
 
 ## 📈 TradingView Pine Scripts
 
-- [`pine/SOT_SMC_Indicator.pine`](pine/SOT_SMC_Indicator.pine) — SMC/ICT style overlay inspired by the reference chart: liquidity swipe, IDM, BOS/CHoCH, OF, order blocks, local + weekly FVG, and BUY/SELL arrows.
-- Setup, inputs, and mapping table: [`pine/README.md`](pine/README.md).
+- [`pine/SOT_SMC_Indicator.pine`](pine/SOT_SMC_Indicator.pine) — **Strategy v6** (TradingView Strategy + PineForge-validated): liquidity swipe, IDM, BOS/CHoCH, OF, order blocks, local + weekly FVG, BUY/SELL.
+- [`pine/SOT_Indicator_Only.pine.txt`](pine/SOT_Indicator_Only.pine.txt) — **Pure Indicator v6** (TradingView Indicator only, no Strategy Tester) — screenshot jaisa overlay.
+- Setup, inputs, preset & troubleshooting: [`pine/README.md`](pine/README.md).
 
 ---
 

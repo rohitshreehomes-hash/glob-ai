@@ -1,15 +1,17 @@
-# SOT Style SMC Toolkit — Pine Script v5
+# SOT Style SMC Toolkit — Pine Script v6
 
 Aapke screenshot wale chart jaise hi **SMC / ICT** annotations automatically plot karne wala TradingView indicator.
 
-> ⚠️ Ye **S.O.T Academy ka proprietary source code nahi hai**. Screenshot me jo concepts dikh rahe the unka ek independent, clean Pine v5 rebuild hai. Exact paid indicator ki internal logic publicly available nahi hoti, isliye yahan similar levels/labels generate kiye gaye hain.
+> ⚠️ Ye **S.O.T Academy ka proprietary source code nahi hai**. Screenshot me jo concepts dikh rahe the unka ek independent, clean Pine v6 rebuild hai. Exact paid indicator ki internal logic publicly available nahi hoti, isliye yahan similar levels/labels generate kiye gaye hain.
 
-## Files
+## Files — konsa file use karein?
 
-| File | Kaam |
-|---|---|
-| `SOT_SMC_Indicator.pine` | Main Pine Script — `strategy()` overlay (v6, TradingView + PineForge compatible) — TradingView me paste karein |
-| `README.md` | Ye guide |
+| File | Kaam | Kahan paste karein |
+|---|---|---|
+| `SOT_SMC_Indicator.pine` | **Strategy version (v6)** — visuals indicator jaisa hi, plus backtest. **PineForge/backtest validation ke liye ye file zaroori hai.** | TradingView → Pine Editor → **Strategies** (Strategy Tester tab dikhega) |
+| `SOT_Indicator_Only.pine.txt` | **Pure Indicator version (v6)** — same code, sirf `indicator()` declaration. No Strategy Tester tab. | TradingView → Pine Editor → **Indicators** |
+
+Dono files ka logic same hai — bus pehli line `strategy()` vs `indicator()` ka farak hai. **Agar aapko sirf chart par overlay chahiye (screenshot jaisa), toh `SOT_Indicator_Only.pine.txt` wala file use karo — wo 100% indicator ke roop me kaam karega.**
 
 ## Kya kya plot hota hai
 
@@ -28,34 +30,60 @@ Aapke screenshot wale chart jaise hi **SMC / ICT** annotations automatically plo
 
 Extra: top-right me chhota dashboard (bias, last event, HTF), background halka bias tint, aur 4 alert conditions.
 
-## Kaise use karein
+## Kaise use karein — Step by step (TradingView)
 
-1. TradingView kholein → **Pine Editor** → **New / Create new indicator**.
-2. Editor ka default code hata kar [`SOT_SMC_Indicator.pine`](SOT_SMC_Indicator.pine) ka pura code paste karein.
-3. **Save** karein (name example: `SOT SMC`) → **Add to chart**.
-4. Screenshot jaisa view chahiye to try karein:
-   - Symbol: `OANDA:NZDUSD`
-   - Timeframe: `1D`
-   - Inputs: `Pivot lookback = 5`, `Higher timeframe = W`, `Extend zones = 120`.
+### Option A: Pure Indicator (Recommended — screenshot jaisa)
 
-> Weekly/HTF FVG ke liye chart timeframe HTF se chhota rakhein (e.g. chart `1D`, HTF `W`). Agar chart khud `W` par hai to HTF `M` ya `W` try karein.
+1. TradingView kholein → upar **Pine Editor** → **New indicator**.
+2. Editor ka default code delete karke `pine/SOT_Indicator_Only.pine.txt` ka **pura code paste** karein.
+3. **Save** karein (naam: `SOT SMC`) → **Add to chart**.
+4. Chart par BOS/CHoCH, Order Block, FVG, IDM, Liquidity Swipe sab dikhenge.
+
+### Option B: Strategy (backtest ke liye)
+
+1. Pine Editor → **New strategy** → `pine/SOT_SMC_Indicator.pine` paste karein → Add to chart.
+2. Strategy Tester me Long/Short trades dikhenge. Visual overlay same hai.
+
+### Screenshot jaisa view kaise laayein (NZDUSD 1D)
+
+Screenshot me `OANDA:NZDUSD` `1D` tha. Same lane ke liye:
+
+- Symbol: `OANDA:NZDUSD`
+- Timeframe: `1D`
+- Inputs:
+  - `Pivot lookback = 5`
+  - `Min bars between structure events = 2`
+  - `Higher timeframe = W`
+  - `Extend zones = 120`
+  - `Local FVG min size x ATR = 0` (screenshot me saare FVG dikhaye, isliye 0)
+  - `HTF FVG min size x ATR = 0`
+  - `OB signal validity = 40`
+
+> Weekly/HTF FVG ke liye chart timeframe HTF se chhota rakhein (e.g. chart `1D`, HTF `W`). Agar chart khud `W` par hai to HTF `M` select karo.
+
+### Agar kuch dikhai na de?
+
+1. Check karo Pine Editor me **Save karne par koi error toh nahi**. `//@version=6` pehli line honi chahiye bina space ke.
+2. `Show BOS / CHoCH`, `Show order blocks`, `Show local FVG` — sab `true` rakho (default true hai).
+3. Kuch labels purane bars par bante hain — chart ko thoda left scroll karo, 200-300 bars dikhao.
+4. Timeframe badlo: `1D` par sabse clear dikhega (screenshot bhi 1D tha). `5m` par bahut noise hoga toh pivot badha do.
 
 ## Important inputs
 
 | Input | Default | Meaning |
 |---|---|---|
 | `Pivot lookback` | `5` | Swing high/low kitne bars left+right se confirm honge. Kam = zyada signals, zyada = clean structure. |
-| `Confirm breaks with candle close` | `true` | BOS/CHoCH ke liye close break chahiye. `false` karne par wick break bhi count hoga. |
-| `Min bars between structure events` | `3` | Ek hi level par baar-baar label na aaye isliye cooldown. |
+| `Confirm breaks with candle close` | `true` | BOS/CHoCH ke liye close break chahiye. `false` par wick break bhi count. |
+| `Min bars between structure events` | `2` | Ek hi level par baar-baar label na aaye isliye cooldown. |
 | `Show IDM / inducement zones` | `true` | IDM box on/off. |
 | `OB search lookback` | `12` | Break se pehle opposite candle dhoondhne ki range. |
-| `Min FVG size (0 = ATR based)` | `0` | `0` par ATR-based filter lagega. Fixed price gap chahiye to value daalein (forex me jaise `0.0004`). |
-| `Local FVG min size x ATR` | `0.15` | Chhote noise gaps ignore karne ke liye. |
-| `HTF FVG min size x ATR` | `0.50` | Weekly gaps thode bade hote hain, isliye bada filter. |
+| `Min FVG size (0 = ATR based)` | `0` | `0` par ATR filter off — saare FVG dikhenge (screenshot ke liye). |
+| `Local FVG min size x ATR` | `0` | `0` = chhote gaps bhi show. 0.15 karke noise filter kar sakte ho. |
+| `HTF FVG min size x ATR` | `0` | `0` = saare weekly FVG show. |
 | `Higher timeframe` | `W` | Weekly FVG ke liye. `D`, `4H`, `M` bhi chalega. |
 | `Extend zones to the right` | `120` | OB/FVG boxes future me kitne bars tak extend honge. |
 | `Require middle candle direction for FVG` | `true` | FVG ki beech wali candle impulsive direction me honi chahiye. |
-| `Require recent liquidity sweep for signals` | `false` | `true` karne par BUY/SELL tabhi aayenge jab recent sweep bhi hua ho. |
+| `Require recent liquidity sweep for signals` | `false` | `true` par BUY/SELL tabhi jab recent sweep bhi hua ho. |
 | `OB signal validity` | `40` | Kitne bars tak purana order block retest signal de sakta hai. |
 
 ## Logic (short)
@@ -78,15 +106,7 @@ Alert dialog me ye conditions milengi:
 - `SOT Bull BOS/CHoCH`
 - `SOT Bear BOS/CHoCH`
 
-`Enable alert conditions` input se inhe on/off kiya ja sakta hai.
-
-## Indicator vs Strategy
-- File ab `strategy()` use karta hai taaki PineForge/backtest validation pass ho aur TradingView dono par chale. Visuals (BOS/CHoCH, OB, FVG, IDM, LIQ) indicator jaisa hi overlay hote hain — `Strategy Tester` tab extra me dikhega.
-- Agar aapko sirf indicator (no Strategy Tester) chahiye: Pine Editor me pehli line ko
-  ```
-  indicator("SOT Style SMC Toolkit", overlay=true, max_bars_back=1000, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
-  ```
-  se replace kar do aur neeche ke do `strategy.entry(...)` lines hata/comment kar do. Baaki code same rahega, v6 par hi chalna chahiye.
+`Enable alert conditions` input se on/off.
 
 ## Notes / limitations
 
@@ -94,6 +114,15 @@ Alert dialog me ye conditions milengi:
 - Ye ek **visual/educational toolkit** hai, guaranteed buy/sell system nahi. Backtest aur risk management zaroor karein.
 - Screenshot jaise exact manual markings algorithm se 100% match nahi honge — market structure thoda subjective hota hai. Inputs adjust karke apne pair/timeframe ke hisaab se tune karein.
 - Agar aapko sirf kuch cheezein chahiye (e.g. bas BOS + OB), to inputs se baaki sab `false` kar dein.
+
+## Troubleshooting — "Script could not be translated from: null"
+
+Ye error PineForge me aata hai jab `//@version=5` ya `indicator()` use hota hai (PineForge sirf `//@version=6` + `strategy()` support karta hai).
+
+- **TradingView par indicator chahiye:** `SOT_Indicator_Only.pine.txt` use karo — ye TradingView par 100% kaam karta hai (indicator).
+- **PineForge/backtest validation ke liye:** `SOT_SMC_Indicator.pine` use karo — ye `strategy()` + `v6` hai, validation pass karta hai.
+
+Dono ka chart visuals same hai.
 
 ## Disclaimer
 

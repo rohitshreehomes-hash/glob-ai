@@ -1,0 +1,276 @@
+//@version=6
+// =============================================================================
+// SOT Style SMC Toolkit  -  Pine Script v6  (Indicator Only - TradingView)
+// -----------------------------------------------------------------------------
+// Independent implementation of the concepts shown in the reference chart:
+//   liquidity swipe, IDM, BOS, CHoCH, OF, order blocks, local FVG,
+//   higher-timeframe (weekly) FVG and BUY / SELL arrows.
+// Pure indicator - paste into Pine Editor -> Indicators.
+//
+// TradingView: Pine Editor -> New Indicator -> Paste -> Save -> Add to chart.
+// NOTE: This is NOT the proprietary S.O.T Academy source code.
+// =============================================================================
+
+indicator("SOT Style SMC Toolkit", shorttitle = "SOT SMC", overlay = true,
+     max_bars_back = 1000, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+
+// ----------------------------------------------------------------------------
+// INPUTS
+// ----------------------------------------------------------------------------
+int pivotLen      = input.int(5, "Pivot lookback (bars each side)", minval = 2, maxval = 30, group = "1. Market structure")
+bool useClose     = input.bool(true, "Confirm breaks with candle close (off = wick)", group = "1. Market structure")
+int cooldown      = input.int(2, "Min bars between structure events", minval = 0, maxval = 20, group = "1. Market structure")
+bool showStruct   = input.bool(true, "Show BOS / CHoCH lines + labels", group = "1. Market structure")
+bool showOF       = input.bool(true, 'Show small "OF" tag on structure lines', group = "1. Market structure")
+bool showIDM      = input.bool(true, "Show IDM / inducement zones", group = "1. Market structure")
+
+bool showOB       = input.bool(true, "Show order blocks", group = "2. Order blocks & FVG")
+int obLookback    = input.int(12, "OB search lookback (bars)", minval = 3, maxval = 50, group = "2. Order blocks & FVG")
+bool showFVG      = input.bool(true, "Show local fair value gaps", group = "2. Order blocks & FVG")
+bool showHtfFVG   = input.bool(true, "Show higher-timeframe (weekly) FVG", group = "2. Order blocks & FVG")
+string htf        = input.timeframe("W", "Higher timeframe", group = "2. Order blocks & FVG")
+float minGapInput = input.float(0.0, "Min FVG size (0 = ATR based)", minval = 0.0, step = 0.0001, group = "2. Order blocks & FVG")
+float minGapMult  = input.float(0.0, "Local FVG min size x ATR (0 = show all)", minval = 0.0, maxval = 2.0, step = 0.05, group = "2. Order blocks & FVG")
+float htfMult     = input.float(0.0, "HTF FVG min size x ATR (0 = show all)", minval = 0.0, maxval = 3.0, step = 0.05, group = "2. Order blocks & FVG")
+int extendBars    = input.int(120, "Extend zones to the right (bars)", minval = 10, maxval = 500, group = "2. Order blocks & FVG")
+bool requireMid   = input.bool(true, "Require middle candle direction for FVG", group = "2. Order blocks & FVG")
+
+bool showLiq       = input.bool(true, "Show liquidity swipe / sweep", group = "3. Liquidity & signals")
+int sweepCooldown  = input.int(5, "Min bars between sweep labels", minval = 1, maxval = 30, group = "3. Liquidity & signals")
+bool showSignals   = input.bool(true, "Show BUY / SELL arrows", group = "3. Liquidity & signals")
+int obValidBars    = input.int(40, "OB signal validity (bars)", minval = 5, maxval = 200, group = "3. Liquidity & signals")
+bool requireSweep  = input.bool(false, "Require recent liquidity sweep for signals", group = "3. Liquidity & signals")
+int sweepLookback  = input.int(20, "Sweep memory for signals (bars)", minval = 5, maxval = 100, group = "3. Liquidity & signals")
+bool showAlerts    = input.bool(true, "Enable alert conditions", group = "3. Liquidity & signals")
+
+
+color bullCol    = input.color(color.teal,   "Bullish",          group = "4. Colors")
+color bearCol    = input.color(color.red,    "Bearish",          group = "4. Colors")
+color neutralCol = input.color(color.gray,   "Neutral / OF",     group = "4. Colors")
+color htfCol     = input.color(color.purple, "HTF / Weekly FVG", group = "4. Colors")
+color liqCol     = input.color(color.orange, "Liquidity",        group = "4. Colors")
+
+// ----------------------------------------------------------------------------
+// STATE & BASIC SERIES
+// ----------------------------------------------------------------------------
+float atr       = ta.atr(14)
+float minGap    = minGapInput == 0.0 ? minGapMult * nz(atr, 0.0) : minGapInput
+float htfMinGap = minGapInput == 0.0 ? htfMult    * nz(atr, 0.0) : minGapInput
+
+var float ph = na
+var float prevPh = na
+var float phHigh = na
+var float phLow = na
+var int phBar = na
+var int prevPhBar = na
+
+var float pl = na
+var float prevPl = na
+var float plHigh = na
+var float plLow = na
+var int plBar = na
+var int prevPlBar = na
+
+var int trend = 0
+var int lastBreakBar = na
+var int lastSweepBar = na
+var int lastBullSweepBar = na
+var int lastBearSweepBar = na
+var float lastBullObTop = na
+var float lastBullObBot = na
+var int lastBullObBar = na
+var float lastBearObTop = na
+var float lastBearObBot = na
+var int lastBearObBar = na
+var string lastEvent = "-"
+
+// ----------------------------------------------------------------------------
+// CONFIRMED SWING PIVOTS
+// ----------------------------------------------------------------------------
+float phRaw = ta.pivothigh(high, pivotLen, pivotLen)
+float plRaw = ta.pivotlow(low, pivotLen, pivotLen)
+
+if not na(phRaw)
+    prevPh    := ph
+    prevPhBar := phBar
+    ph        := phRaw
+    phBar     := bar_index - pivotLen
+    phHigh    := high[pivotLen]
+    phLow     := low[pivotLen]
+
+if not na(plRaw)
+    prevPl    := pl
+    prevPlBar := plBar
+    pl        := plRaw
+    plBar     := bar_index - pivotLen
+    plHigh    := high[pivotLen]
+    plLow     := low[pivotLen]
+
+// ----------------------------------------------------------------------------
+// BOS / CHoCH DETECTION
+// ----------------------------------------------------------------------------
+bool canBreak = not na(ph) and not na(pl) and not na(phBar) and not na(plBar) and (na(lastBreakBar) or (bar_index - lastBreakBar) >= cooldown)
+bool justConfirmed = not na(phBar) and not na(plBar) and (bar_index - phBar <= pivotLen + 1 or bar_index - plBar <= pivotLen + 1)
+
+bool bullBreak = canBreak and (useClose ? (close > ph and (close[1] <= ph or justConfirmed)) : (high > ph))
+bool bearBreak = canBreak and not bullBreak and (useClose ? (close < pl and (close[1] >= pl or justConfirmed)) : (low < pl))
+
+int prevTrend = trend
+
+if bullBreak
+    trend         := 1
+    string bullEvt = prevTrend == -1 ? "CHoCH UP" : "BOS UP"
+    lastEvent     := bullEvt
+    lastBreakBar  := bar_index
+    if showStruct
+        line.new(x1 = phBar, y1 = ph, x2 = bar_index, y2 = ph, xloc = xloc.bar_index, extend = extend.none, color = bullCol, style = line.style_dashed, width = 1)
+        label.new(x = bar_index, y = ph, text = bullEvt, xloc = xloc.bar_index, yloc = yloc.abovebar, color = color.new(bullCol, 15), textcolor = color.white, style = label.style_label_down, size = size.small)
+    if showOF
+        label.new(x = bar_index - 1, y = ph, text = "OF", xloc = xloc.bar_index, yloc = yloc.price, color = color.new(neutralCol, 100), textcolor = neutralCol, style = label.style_none, size = size.tiny)
+
+if bearBreak
+    trend         := -1
+    string bearEvt = prevTrend == 1 ? "CHoCH DN" : "BOS DN"
+    lastEvent     := bearEvt
+    lastBreakBar  := bar_index
+    if showStruct
+        line.new(x1 = plBar, y1 = pl, x2 = bar_index, y2 = pl, xloc = xloc.bar_index, extend = extend.none, color = bearCol, style = line.style_dashed, width = 1)
+        label.new(x = bar_index, y = pl, text = bearEvt, xloc = xloc.bar_index, yloc = yloc.belowbar, color = color.new(bearCol, 15), textcolor = color.white, style = label.style_label_up, size = size.small)
+    if showOF
+        label.new(x = bar_index - 1, y = pl, text = "OF", xloc = xloc.bar_index, yloc = yloc.price, color = color.new(neutralCol, 100), textcolor = neutralCol, style = label.style_none, size = size.tiny)
+
+// ----------------------------------------------------------------------------
+// IDM (INDUCEMENT)
+// ----------------------------------------------------------------------------
+if showIDM and (bullBreak or bearBreak)
+    float idmTop = bullBreak ? plHigh : phHigh
+    float idmBot = bullBreak ? plLow  : phLow
+    int   idmBar = bullBreak ? plBar  : phBar
+    if not na(idmTop) and not na(idmBot) and not na(idmBar) and idmBar > 0
+        box.new(left = idmBar - 1, top = idmTop, right = idmBar + 2, bottom = idmBot, border_color = color.new(neutralCol, 25), bgcolor = color.new(neutralCol, 86), text = "IDM", text_color = color.white, text_size = size.tiny, text_halign = text.align_center, text_valign = text.align_center)
+
+// ----------------------------------------------------------------------------
+// ORDER BLOCKS
+// ----------------------------------------------------------------------------
+if showOB and (bullBreak or bearBreak)
+    int maxLook = int(math.min(obLookback, bar_index - 1))
+    if maxLook >= 1
+        int   obIndex = na
+        float obTop   = na
+        float obBot   = na
+        for i = 1 to maxLook
+            bool isOpp = bullBreak ? (close[i] < open[i]) : (close[i] > open[i])
+            if isOpp
+                obIndex := i
+                obTop   := high[i]
+                obBot   := low[i]
+                break
+        if not na(obIndex)
+            color obCol = bullBreak ? bullCol : bearCol
+            int leftBar = bar_index - obIndex - 1
+            box.new(left = leftBar, top = obTop, right = bar_index + extendBars, bottom = obBot, border_color = color.new(obCol, 45), bgcolor = color.new(obCol, 88), text = bullBreak ? "Bull OB" : "Bear OB", text_color = color.white, text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_center)
+            if bullBreak
+                lastBullObTop := obTop
+                lastBullObBot := obBot
+                lastBullObBar := bar_index
+            else
+                lastBearObTop := obTop
+                lastBearObBot := obBot
+                lastBearObBar := bar_index
+
+// ----------------------------------------------------------------------------
+// LOCAL FAIR VALUE GAPS (3-candle imbalance)
+// ----------------------------------------------------------------------------
+if showFVG and bar_index > 20
+    bool midOkBull = not requireMid or close[1] > open[1]
+    bool midOkBear = not requireMid or close[1] < open[1]
+    bool bullFVG   = low > high[2] and (low - high[2]) >= minGap and midOkBull
+    bool bearFVG   = high < low[2] and (low[2] - high) >= minGap and midOkBear
+    if bullFVG
+        box.new(left = bar_index - 2, top = low, right = bar_index + extendBars, bottom = high[2], border_color = color.new(bullCol, 70), bgcolor = color.new(bullCol, 91), text = "FVG", text_color = color.white, text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_center)
+    if bearFVG
+        box.new(left = bar_index - 2, top = low[2], right = bar_index + extendBars, bottom = high, border_color = color.new(bearCol, 70), bgcolor = color.new(bearCol, 91), text = "FVG", text_color = color.white, text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_center)
+
+// ----------------------------------------------------------------------------
+// HIGHER-TIMEFRAME (WEEKLY) FVG
+// Uses last three COMPLETED HTF bars (lookahead_on + [1]) to avoid repaint.
+// ----------------------------------------------------------------------------
+[hh1, ll1, hh2, ll2, hh3, ll3, ho2, hc2, ht1] = request.security(syminfo.tickerid, htf, [high[1], low[1], high[2], low[2], high[3], low[3], open[2], close[2], time[1]], gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_on)
+
+bool htfReady  = not na(hh1) and not na(ll1) and not na(hh3) and not na(ll3) and not na(ho2) and not na(hc2) and not na(ht1)
+bool newHtfBar = htfReady and ht1 != nz(ht1[1], ht1)
+
+bool htfBullFVG = showHtfFVG and htfReady and newHtfBar and ll1 > hh3 and (ll1 - hh3) >= htfMinGap and (not requireMid or hc2 > ho2)
+bool htfBearFVG = showHtfFVG and htfReady and newHtfBar and hh1 < ll3 and (ll3 - hh1) >= htfMinGap and (not requireMid or hc2 < ho2)
+
+if htfBullFVG
+    box.new(left = bar_index - 3, top = ll1, right = bar_index + extendBars, bottom = hh3, border_color = color.new(htfCol, 45), bgcolor = color.new(htfCol, 88), text = htf + " FVG", text_color = color.white, text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_center)
+if htfBearFVG
+    box.new(left = bar_index - 3, top = ll3, right = bar_index + extendBars, bottom = hh1, border_color = color.new(htfCol, 45), bgcolor = color.new(htfCol, 88), text = htf + " FVG", text_color = color.white, text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_center)
+
+// ----------------------------------------------------------------------------
+// LIQUIDITY SWIPE / SWEEP
+// ----------------------------------------------------------------------------
+bool canSweep     = na(lastSweepBar) or (bar_index - lastSweepBar) >= sweepCooldown
+bool bearSweepRaw = showLiq and not na(ph) and not na(phBar) and high > ph and close < ph
+bool bullSweepRaw = showLiq and not na(pl) and not na(plBar) and low  < pl and close > pl
+bool bearSweep    = bearSweepRaw and canSweep
+bool bullSweep    = bullSweepRaw and canSweep
+
+if bearSweep
+    lastSweepBar     := bar_index
+    lastBearSweepBar := bar_index
+    line.new(x1 = phBar, y1 = ph, x2 = bar_index, y2 = ph, xloc = xloc.bar_index, extend = extend.none, color = liqCol, style = line.style_dotted, width = 1)
+    label.new(x = bar_index, y = high, text = "LIQ SWIPE", xloc = xloc.bar_index, yloc = yloc.abovebar, color = color.new(liqCol, 15), textcolor = color.white, style = label.style_label_down, size = size.tiny)
+
+if bullSweep
+    lastSweepBar     := bar_index
+    lastBullSweepBar := bar_index
+    line.new(x1 = plBar, y1 = pl, x2 = bar_index, y2 = pl, xloc = xloc.bar_index, extend = extend.none, color = liqCol, style = line.style_dotted, width = 1)
+    label.new(x = bar_index, y = low, text = "LIQ SWIPE", xloc = xloc.bar_index, yloc = yloc.belowbar, color = color.new(liqCol, 15), textcolor = color.white, style = label.style_label_up, size = size.tiny)
+
+// ----------------------------------------------------------------------------
+// BUY / SELL SIGNALS - retest of most recent order block with rejection
+// ----------------------------------------------------------------------------
+bool bullObValid = not na(lastBullObTop) and not na(lastBullObBar) and (bar_index - lastBullObBar) <= obValidBars
+bool bearObValid = not na(lastBearObTop) and not na(lastBearObBar) and (bar_index - lastBearObBar) <= obValidBars
+
+bool buyRetest  = bullObValid and trend == 1  and low  <= lastBullObTop and close > lastBullObBot and close > open
+bool sellRetest = bearObValid and trend == -1 and high >= lastBearObBot and close < lastBearObTop and close < open
+
+bool sweepOkBull = not requireSweep or (not na(lastBullSweepBar) and (bar_index - lastBullSweepBar) <= sweepLookback)
+bool sweepOkBear = not requireSweep or (not na(lastBearSweepBar) and (bar_index - lastBearSweepBar) <= sweepLookback)
+
+bool buySignal  = buyRetest  and sweepOkBull and not (buyRetest[1]  and sweepOkBull[1])
+bool sellSignal = sellRetest and sweepOkBear and not (sellRetest[1] and sweepOkBear[1])
+
+plotshape(showSignals and buySignal,  title = "BUY",  style = shape.triangleup,   location = location.belowbar, color = bullCol, size = size.small, text = "BUY")
+plotshape(showSignals and sellSignal, title = "SELL", style = shape.triangledown, location = location.abovebar, color = bearCol, size = size.small, text = "SELL")
+
+// Strategy orders (enables backtest + PineForge validation)
+
+// Subtle bias tint
+bgcolor(trend == 1 ? color.new(bullCol, 96) : trend == -1 ? color.new(bearCol, 96) : na, title = "Bias tint")
+
+// ----------------------------------------------------------------------------
+// SMALL DASHBOARD
+// ----------------------------------------------------------------------------
+var table dash = table.new(position.top_right, 2, 3, bgcolor = color.new(color.black, 20), frame_color = color.gray, frame_width = 1, border_color = color.gray, border_width = 1)
+
+if barstate.islast
+    string biasTxt = trend == 1 ? "BULLISH" : trend == -1 ? "BEARISH" : "NEUTRAL"
+    color  biasCol = trend == 1 ? bullCol : trend == -1 ? bearCol : neutralCol
+    table.cell(dash, 0, 0, "SOT SMC", text_color = color.white, text_size = size.small, bgcolor = color.new(color.blue, 35))
+    table.cell(dash, 1, 0, biasTxt, text_color = color.white, text_size = size.small, bgcolor = color.new(biasCol, 35))
+    table.cell(dash, 0, 1, "Last event", text_color = color.gray, text_size = size.tiny)
+    table.cell(dash, 1, 1, lastEvent, text_color = color.white, text_size = size.tiny)
+    table.cell(dash, 0, 2, "HTF", text_color = color.gray, text_size = size.tiny)
+    table.cell(dash, 1, 2, htf, text_color = color.white, text_size = size.tiny)
+
+// ----------------------------------------------------------------------------
+// ALERTS
+// ----------------------------------------------------------------------------
+alertcondition(showAlerts and buySignal,  title = "SOT BUY",          message = "SOT SMC: BUY signal on {{ticker}} {{interval}}")
+alertcondition(showAlerts and sellSignal, title = "SOT SELL",         message = "SOT SMC: SELL signal on {{ticker}} {{interval}}")
+alertcondition(showAlerts and bullBreak,  title = "SOT Bull BOS/CHoCH", message = "SOT SMC: bullish structure break on {{ticker}} {{interval}}")
+alertcondition(showAlerts and bearBreak,  title = "SOT Bear BOS/CHoCH", message = "SOT SMC: bearish structure break on {{ticker}} {{interval}}")

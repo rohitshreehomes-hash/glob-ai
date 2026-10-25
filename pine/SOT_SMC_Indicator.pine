@@ -26,7 +26,7 @@ strategy("SOT Style SMC Toolkit", shorttitle = "SOT SMC", overlay = true,
 // ----------------------------------------------------------------------------
 int pivotLen      = input.int(5, "Pivot lookback (bars each side)", minval = 2, maxval = 30, group = "1. Market structure")
 bool useClose     = input.bool(true, "Confirm breaks with candle close (off = wick)", group = "1. Market structure")
-int cooldown      = input.int(3, "Min bars between structure events", minval = 0, maxval = 20, group = "1. Market structure")
+int cooldown      = input.int(2, "Min bars between structure events", minval = 0, maxval = 20, group = "1. Market structure")
 bool showStruct   = input.bool(true, "Show BOS / CHoCH lines + labels", group = "1. Market structure")
 bool showOF       = input.bool(true, 'Show small "OF" tag on structure lines', group = "1. Market structure")
 bool showIDM      = input.bool(true, "Show IDM / inducement zones", group = "1. Market structure")
@@ -37,8 +37,8 @@ bool showFVG      = input.bool(true, "Show local fair value gaps", group = "2. O
 bool showHtfFVG   = input.bool(true, "Show higher-timeframe (weekly) FVG", group = "2. Order blocks & FVG")
 string htf        = input.timeframe("W", "Higher timeframe", group = "2. Order blocks & FVG")
 float minGapInput = input.float(0.0, "Min FVG size (0 = ATR based)", minval = 0.0, step = 0.0001, group = "2. Order blocks & FVG")
-float minGapMult  = input.float(0.15, "Local FVG min size x ATR", minval = 0.0, maxval = 2.0, step = 0.05, group = "2. Order blocks & FVG")
-float htfMult     = input.float(0.50, "HTF FVG min size x ATR", minval = 0.0, maxval = 3.0, step = 0.05, group = "2. Order blocks & FVG")
+float minGapMult  = input.float(0.0, "Local FVG min size x ATR (0 = show all)", minval = 0.0, maxval = 2.0, step = 0.05, group = "2. Order blocks & FVG")
+float htfMult     = input.float(0.0, "HTF FVG min size x ATR (0 = show all)", minval = 0.0, maxval = 3.0, step = 0.05, group = "2. Order blocks & FVG")
 int extendBars    = input.int(120, "Extend zones to the right (bars)", minval = 10, maxval = 500, group = "2. Order blocks & FVG")
 bool requireMid   = input.bool(true, "Require middle candle direction for FVG", group = "2. Order blocks & FVG")
 
