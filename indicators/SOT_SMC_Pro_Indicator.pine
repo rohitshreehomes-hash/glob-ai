@@ -940,7 +940,7 @@ else if curTrend == -1 and not currLowConf and low < currLow
     currLowPiv := false
 
 // =============================================================================
-// 6. APEX v9 DUAL SNIPER ENTRY ENGINE + PRE-SIGNAL RADAR + OB/FVG POIs + 17-ROW HUD
+// 6. APEX v9 DUAL SNIPER ENTRY ENGINE + PRE-SIGNAL RADAR + OB/FVG POIs + 18-ROW HUD
 // =============================================================================
 bool hasValidPd = not na(pdhPrice) and not na(pdlPrice)
 float clvBull = candleRange > 0.0 ? math.min(1.0, math.max(0.0, (close - low) / candleRange)) : 0.5
@@ -1319,7 +1319,7 @@ barcolor(hlSigBars and sigC ? #FFD54F : colorCandles ? cCol : color(na))
 
 var table topBrand = table.new(position.top_center, 1, 1, bgcolor=TRANSP)
 var table midWatermark = table.new(position.middle_center, 1, 1, bgcolor=TRANSP)
-var table smcDash = table.new(position.top_right, 2, 17, bgcolor=color.new(#0D1017, 8), border_color=color.new(structCol, 65), border_width=1)
+var table smcDash = table.new(position.top_right, 2, 18, bgcolor=color.new(#0D1017, 8), border_color=color.new(structCol, 65), border_width=1)
 
 if barstate.islast
     while array.size(liveBoxes) > 0
@@ -1462,10 +1462,11 @@ if barstate.islast and showDashboard
     string rangeHudTxt = timeframe.isintraday ? str.tostring(rangeLo, format.mintick) + " - " + str.tostring(rangeHi, format.mintick) + " (" + str.tostring(rangeWidthAtr, "#.##") + " ATR)" : "---"
     string earlyHudTxt = earlyOn ? "ON | " + str.tostring(microLen) + "-Bar Break | " + str.tostring(earlySigCount) + " fired | CE > " + str.tostring(microBuyLvl, format.mintick) : "OFF (Pivot Break Only)"
     color earlyHudCol = earlyOn ? #69F0AE : #9AA4B5
+    string blockTxt = not warmupReady ? "WARMUP " + str.tostring(bar_index + 1) + "/205" : trOpen ? "IN TRADE - exit first" : tradesToday >= maxTradesPerDay ? "DAY CAP " + str.tostring(tradesToday) + "/" + str.tostring(maxTradesPerDay) : bar_index <= lastClosedBar + cooldownBars ? "COOLDOWN " + str.tostring(lastClosedBar + cooldownBars - bar_index) + "b" : not orbWidthOk ? "ORB TOO WIDE" : chopRegime ? "SIDEWAYS CHOP - no trend entry" : not erRatioOk ? "LOW ER - no trend" : "ARMED | CE > " + str.tostring(microBuyLvl, format.mintick) + " | PE < " + str.tostring(microSellLvl, format.mintick)
     color hdrBg = color.new(#161B26, 2)
     color rowBg = color.new(#0E1118, 6)
     color lblFg = #9AA4B5
-    table.cell(smcDash, 0, 0, "S.O.T APEX v9", bgcolor=hdrBg, text_color=structCol, text_size=size.tiny)
+    table.cell(smcDash, 0, 0, "S.O.T APEX v9 B25OCT", bgcolor=hdrBg, text_color=structCol, text_size=size.tiny)
     table.cell(smcDash, 1, 0, modeTitle, bgcolor=hdrBg, text_color=#FFFFFF, text_size=size.tiny)
     table.cell(smcDash, 0, 1, "Apex Readiness", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
     table.cell(smcDash, 1, 1, readyTxt, bgcolor=rowBg, text_color=rdyCol, text_size=size.tiny)
@@ -1499,6 +1500,8 @@ if barstate.islast and showDashboard
     table.cell(smcDash, 1, 15, rangeHudTxt, bgcolor=rowBg, text_color=#B0BEC5, text_size=size.tiny)
     table.cell(smcDash, 0, 16, "v9.1 Early Trigger", bgcolor=rowBg, text_color=lblFg, text_size=size.tiny)
     table.cell(smcDash, 1, 16, earlyHudTxt, bgcolor=rowBg, text_color=earlyHudCol, text_size=size.tiny)
+    table.cell(smcDash, 0, 17, "Why No Signal", bgcolor=hdrBg, text_color=lblFg, text_size=size.tiny)
+    table.cell(smcDash, 1, 17, blockTxt, bgcolor=hdrBg, text_color=#FFD54F, text_size=size.tiny)
 
 // =============================================================================
 // 7. TRADINGVIEW ALERTS
