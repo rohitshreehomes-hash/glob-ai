@@ -6,6 +6,7 @@ Two files, one engine:
 | :--- | :--- | :--- |
 | [`indicators/Elephant_Indicator.pine`](../indicators/Elephant_Indicator.pine) | separate oscillator pane | The full elephant: fast pair, slow pair, long pair, trunk, EYE / TUSK / TRUNK pattern engine, confluence score, HUD, gauge table, 8 alerts |
 | [`indicators/Elephant_Signals_Overlay.pine`](../indicators/Elephant_Signals_Overlay.pine) | price chart | Same engine drawn on price with 🐘 BUY/SELL labels, entry / stop / T1 / T2 trade plan and plan lines |
+| [`indicators/Elephant_Zones.pine`](../indicators/Elephant_Zones.pine) | price chart | **The look from the course video**: grey top/bottom zones (supply above, demand below) extended to the right, dotted reaction edge, tap / break alerts |
 
 Live demo terminal (runs the same maths in JavaScript on synthetic candles, with a copy-to-clipboard for both Pine files):
 `npm start` → <http://localhost:8080/elephant>
@@ -23,6 +24,26 @@ The **Elephant Indicator sold with the Upsurge.club course is proprietary**; its
 * and the course rule that **the indicator is a scanner, not a system: it must be confirmed with price action.**
 
 No performance numbers are claimed for this file. It has **not** been back-tested on exchange data here, and any strategy result depends on your timeframe, instrument, stop placement and costs. The demo candles in the preview are synthetic.
+
+---
+
+## 🟫 The grey zone overlay (`Elephant_Zones.pine`) — the screenshot look
+
+The course video shows ETH 15m with long **light-grey horizontal bands** sitting on tops and bottoms, and a dotted line at the edge price reacts to. That is exactly what this file draws, automatically:
+
+| Piece | Rule |
+| :--- | :--- |
+| **Top → resistance zone** | from a **confirmed pivot high** (`pivotLen` bars each side): `top = pivot high`, `bottom = pivot high − 0.35 × ATR14` |
+| **Bottom → support zone** | from a **confirmed pivot low**: `bottom = pivot low`, `top = pivot low + 0.35 × ATR14` |
+| Extend | every live zone grows to `bar_index + 10` bars ahead, exactly like the video |
+| Dotted edge | resistance: dotted at its **lower** edge, support: dotted at its **upper** edge — the level price actually reacts to |
+| Mitigation | a close beyond the zone by `0.15 ATR` freezes the box and fades it (or deletes it, your choice) |
+| Recycling | max 16 zones; the oldest is removed so the chart never becomes a grey wall |
+| Optional | body anchoring, minimum gap from the opposite side, TOP/BOTTOM tags, tap ● markers |
+
+Settings that matter: `Pivot strength` 5 (lower = more zones), `Zone depth` 0.35 ATR (higher = fatter bands), `Maximum zones` 16, theme `Grey (video style)` / `Red-Green` / `Blue-Orange` / `Mono dark`.
+
+> **About the little grey price tags on the right axis in the screenshot:** those are TradingView *drawing* labels — the presenter drew the rectangles by hand, and drawings (unlike Pine objects) print their top/bottom on the price scale. Pine cannot write to the price scale, so this indicator prints the range as a right-edge label instead (`Show zone labels`).
 
 ---
 
@@ -104,6 +125,8 @@ Each fires **once per closed bar** (`alert.freq_once_per_bar_close`), and the BU
 | **`g++ -std=c++17 -fsyntax-only`** on both generated units | **rc = 0** |
 | PineTS 0.13.1 bar-by-bar VM, 900 synthetic NIFTY 5m bars | `Elephant_Indicator.pine` → **0 runtime errors**, 16 plot/table/label streams |
 | Same VM, overlay file | **0 runtime errors**, 18 streams |
+| Same VM, zones file | **0 runtime errors**; 16 live boxes / 16 dotted lines / 16 labels at the right of a 900-bar feed (8 resistance + 8 support, 8 mitigated) |
+| PineForge + g++ on the zones file | **0 errors**, 1,684 C++ lines, `rc = 0` |
 | Signal sanity on that feed | 55 eyes → 4 BUY TUSK, 4 SELL TUSK, 5 FULL ELEPHANT confirmations, 8 top / 9 bottom exhaustion events (≈0.7 scored entries per session — a scanner cadence, not a machine gun) |
 | JS mirror in `preview/elephant.html` | renders both canvases + HUD + stats against a DOM stub with **0 runtime errors**; identical state machine, session gate and scoring |
 
@@ -113,6 +136,7 @@ Not verified: TradingView's own hosted compiler (not reachable from this sandbox
 
 ## 🧭 How to actually trade it (course rules, condensed)
 
+0. **Mark the arena first.** Run `Elephant_Zones.pine`: the grey bands are the tops and bottoms the course talks about — resistance above, support below. Trade *into* a band, never in the middle of nowhere.
 1. **Wait for the eye.** No eye, no trade — the whole edge is buying after a decline, not in the middle of one.
 2. **Take the tusk only with price action**: a support/resistance hold, a trendline break, or a rejection candle at the eye. The score gate is a filter, not a replacement for that read.
 3. **Stop below the eye swing** (overlay prints it). If the stop is wider than your risk per trade allows, skip — do not shrink it into the noise.
