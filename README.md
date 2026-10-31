@@ -6,6 +6,23 @@
 
 ---
 
+## 🐘 NEW — Elephant Indicator (Pine v6 replica of the *Intraday Trading Strategy Using Elephant Indicator* course tool)
+
+Requested addition, shipped as two standalone files next to the SMC engine:
+
+| File | Where it draws | What you get |
+| :--- | :--- | :--- |
+| `indicators/Elephant_Indicator.pine` | separate pane | fast pair 5/8 (**tusk**) · slow pair 13/21 (**head**) · 34/89 pair · 144/233 **trunk**, all as ATR-unit spreads, with **EYE → TUSK → TRUNK** pattern detection, 0–100 confluence score, live HUD, gauge table and 8 alerts |
+| `indicators/Elephant_Signals_Overlay.pine` | price chart | the same engine on price: 🐘 BUY/SELL labels with **Entry / Stop (eye swing ± 0.3 ATR) / T1 1R / T2 2R** and plan lines |
+| `preview/elephant.html` | browser | live demo terminal rendering the identical maths on synthetic candles (both panes, HUD, T1-hit stats, copy-Pine buttons) — `npm start` → `/elephant` |
+| `docs/ELEPHANT_INDICATOR.md` | docs | full maths, input reference, alert list, honest scope + verification notes |
+
+**Honest scope:** the course's Elephant Indicator is proprietary and its source is unpublished, so this is an **independent reconstruction of the publicly documented concept** (MA-pair elephant figure + eye/tusk/trunk + "confirm with price action"). No profitability is claimed — the only verified numbers are plumbing checks: **PineForge 4-pass transpiler → 0 errors** on both files (2,543 / 2,522 generated C++ lines) with **`g++ -std=c++17 -fsyntax-only` rc = 0**, **PineTS 0.13.1 bar-by-bar VM → 0 runtime errors** on a 900-bar synthetic NIFTY 5m feed (16 / 18 streams), and the JS mirror renders with 0 errors. On that feed the engine produced **55 eyes → 4 BUY TUSK, 4 SELL TUSK, 5 FULL ELEPHANT confirmations, 8 top / 9 bottom exhaustion events** (≈0.7 scored entries per session).
+
+**Course rules encoded in the script:** no signal in the first 5 / last 10 minutes (NSE 09:15–15:30 IST, crypto 24×7 auto-detected) · tusk needs EMA5 crossing EMA8 **and** a close reclaiming EMA21 **and** a break of the prior bar high **and** score ≥ 55 · stop below the eye swing, T1 1R, T2 2R · the score is fed by VWAP side, HTF EMA200 bias (non-lookahead), RSI exhaustion, volume climax, rejection wick / engulfing and MA structure.
+
+---
+
 ## ⚡ Early Trigger Engine — built into the same S.O.T SMC Pro v9 indicator ("jaldi buy/sell, zyada movement")
 
 ### The problem it fixes

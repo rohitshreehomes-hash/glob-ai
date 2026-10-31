@@ -1,0 +1,389 @@
+//@version=6
+// =============================================================================
+//  ELEPHANT SIGNALS — PRICE OVERLAY  🐘
+//  Companion to indicators/Elephant_Indicator.pine (the same engine drawn on
+//  the oscillator pane).  This edition puts the elephant straight on the price
+//  chart, because the Upsurge.club course rule is: never take the elephant
+//  alone — always confirm with price action, then place the stop at the swing.
+//
+//  Same pattern, same maths, same filters:
+//    EYE   -> fast pair (EMA5/8) prints a trough / peak after a decline / rally
+//    TUSK  -> EMA5 crosses EMA8 back with a close reclaiming EMA21 and breaking
+//             the previous bar's extreme  (the entry)
+//    TRUNK -> slow pair (EMA13/21) crosses zero with the 144/233 trunk turning
+//             (trend-change confirmation / runner permission)
+//
+//  On every signal this file prints the full trade plan: Entry, Stop (swing
+//  low/high ± buffer), T1 at 1R and T2 at 2R, plus entry/SL/target lines that
+//  extend to the right so you can see the plan while the trade is live.
+//
+//  Non-repainting: all pivots are read one bar back and signals are evaluated
+//  on bar close.
+// =============================================================================
+indicator("Elephant Signals 🐘 [Price Overlay]", shorttitle="ELEPH PX", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=100, max_bars_back=500)
+
+// -----------------------------------------------------------------------------
+// 1. INPUTS
+// -----------------------------------------------------------------------------
+G_RIB = "1. Elephant Ribbon (price)"
+G_PAT = "2. Pattern Engine (eye / tusk / trunk)"
+G_EX  = "3. Filters & Exits"
+G_SES = "4. Session & Market Mode"
+G_VIS = "5. Visuals & Alerts"
+
+int   fast1   = input.int(5,   "Fast pair — average 1 (tusk)",      minval=1, maxval=200, group=G_RIB)
+int   fast2   = input.int(8,   "Fast pair — average 2",             minval=2, maxval=200, group=G_RIB)
+int   slow1   = input.int(13,  "Slow pair — average 1 (head)",      minval=2, maxval=300, group=G_RIB)
+int   slow2   = input.int(21,  "Slow pair — average 2",             minval=3, maxval=300, group=G_RIB)
+int   long1   = input.int(34,  "Long average 1",                    minval=3, maxval=400, group=G_RIB)
+int   long2   = input.int(89,  "Long average 2",                    minval=5, maxval=400, group=G_RIB)
+int   trunk1  = input.int(144, "Very long average 1 (trunk)",       minval=5, maxval=500, group=G_RIB)
+int   trunk2  = input.int(233, "Very long average 2",               minval=8, maxval=500, group=G_RIB)
+int   trunkSm = input.int(5,   "Trunk smoothing",                   minval=1, maxval=50,  group=G_RIB)
+int   atrLen  = input.int(14,  "ATR length",                        minval=2, maxval=100, group=G_RIB)
+bool  showRib = input.bool(true, "Show EMA 5/8/13/21 ribbon",       group=G_RIB)
+bool  showLong= input.bool(true, "Show 34 / 89 / 144 / 233 EMAs",   group=G_RIB)
+bool  showCloud=input.bool(true, "Colour the ribbon cloud",         group=G_RIB)
+
+float eyeLevel   = input.float(0.0, "Eye must sit beyond this spread level (ATR units)", minval=-2.0, maxval=2.0, step=0.1, group=G_PAT)
+int   tuskWindow = input.int(10, "Tusk must follow the eye within (bars)", minval=2, maxval=40, group=G_PAT)
+int   eyeCoolBars = input.int(8, "Eye cooldown (bars between eyes)", minval=1, maxval=50, group=G_PAT)
+int   fullWindow = input.int(15, "Trunk confirmation window after tusk (bars)", minval=3, maxval=60, group=G_PAT)
+bool  needReclaim= input.bool(true, "Tusk needs a close back above/below EMA21", group=G_PAT)
+bool  needBreak  = input.bool(true, "Tusk needs a break of the previous bar high/low", group=G_PAT)
+int   minScore   = input.int(55, "Minimum confluence score", minval=0, maxval=100, group=G_PAT)
+
+int   rsiLen  = input.int(14, "RSI length",                         minval=2, maxval=50, group=G_EX)
+float rsiBuy  = input.float(35.0, "Bottom: RSI at or below",        minval=10, maxval=50, group=G_EX)
+float rsiSell = input.float(65.0, "Top: RSI at or above",           minval=50, maxval=90, group=G_EX)
+int   volLen  = input.int(20, "Volume average length",              minval=3, maxval=100, group=G_EX)
+float volX    = input.float(1.30, "Volume climax multiple",         minval=1.0, maxval=5.0, step=0.05, group=G_EX)
+float wickAtr = input.float(0.35, "Rejection wick (x ATR)",         minval=0.05, maxval=2.0, step=0.05, group=G_EX)
+float extAtr  = input.float(0.60, "Minimum stretch from EMA21 (x ATR)", minval=0.0, maxval=4.0, step=0.05, group=G_EX)
+float slBuf   = input.float(0.30, "Stop buffer beyond the swing (x ATR)", minval=0.0, maxval=3.0, step=0.05, group=G_EX)
+float t1R     = input.float(1.0, "Target 1 (R multiple)",           minval=0.2, maxval=10.0, step=0.1, group=G_EX)
+float t2R     = input.float(2.0, "Target 2 (R multiple)",           minval=0.2, maxval=20.0, step=0.1, group=G_EX)
+int   planBars= input.int(24, "Draw trade plan lines for N bars",   minval=4, maxval=200, group=G_EX)
+bool  useHtf  = input.bool(true, "Use higher-timeframe bias",       group=G_EX)
+string htfTf  = input.string("60", "HTF bias timeframe", options=["15", "30", "60", "240", "D"], group=G_EX)
+int   htfLen  = input.int(200, "HTF bias EMA length", minval=20, maxval=400, group=G_EX)
+
+string sessMode = input.string("Auto (India 09:15-15:30 / Crypto 24x7)", "Market mode", options=["Auto (India 09:15-15:30 / Crypto 24x7)", "India 09:15-15:30 IST", "Crypto 24x7", "All bars"], group=G_SES)
+int   skipOpen  = input.int(5,  "Skip first N minutes after the open", minval=0, maxval=60, group=G_SES)
+int   skipClose = input.int(10, "Skip last N minutes before the close", minval=0, maxval=60, group=G_SES)
+bool  onlySess  = input.bool(true, "Block signals outside the session", group=G_SES)
+
+bool showEyes  = input.bool(true,  "Show EYE markers",              group=G_VIS)
+bool showPlans = input.bool(true,  "Show trade plan labels & lines",group=G_VIS)
+bool showExh   = input.bool(true,  "Show standalone exhaustion markers", group=G_VIS)
+bool showHud   = input.bool(true,  "Show HUD",                      group=G_VIS)
+
+// -----------------------------------------------------------------------------
+// 2. AVERAGES & NORMALISED SPREADS
+// -----------------------------------------------------------------------------
+float atrRaw = ta.atr(atrLen)
+float atrV   = nz(atrRaw, ta.tr) > 0 ? nz(atrRaw, ta.tr) : syminfo.mintick
+
+float aF1 = ta.ema(close, fast1)
+float aF2 = ta.ema(close, fast2)
+float aS1 = ta.ema(close, slow1)
+float aS2 = ta.ema(close, slow2)
+float aL1 = ta.ema(close, long1)
+float aL2 = ta.ema(close, long2)
+float aT1 = ta.ema(close, trunk1)
+float aT2 = ta.ema(close, trunk2)
+float aB  = ta.ema(close, 200)
+
+float fastSp = nz((aF1 - aF2) / atrV)
+float slowSp = nz((aS1 - aS2) / atrV)
+float longSp = nz((aL1 - aL2) / atrV)
+float trunk  = ta.ema(nz((aT1 - aT2) / atrV), trunkSm)
+bool  trunkUp = trunk > nz(trunk[1], trunk)
+bool  trunkDn = trunk < nz(trunk[1], trunk)
+
+// -----------------------------------------------------------------------------
+// 3. SESSION
+// -----------------------------------------------------------------------------
+bool isCrypto = syminfo.type == "crypto"
+bool isIndia  = not isCrypto
+string tz     = "Asia/Kolkata"
+bool indiaSess = not na(time(timeframe.period, "0915-1530:1234567", tz))
+
+bool inSession = switch sessMode
+    "Crypto 24x7"           => true
+    "All bars"              => true
+    "India 09:15-15:30 IST" => indiaSess
+    => isCrypto ? true : indiaSess
+
+int istMin = hour(time, tz) * 60 + minute(time, tz)
+bool edgeBlock = isIndia and inSession and (istMin < 9 * 60 + 15 + skipOpen or istMin > 15 * 60 + 30 - skipClose)
+bool tradeWindow = inSession and (not onlySess or not edgeBlock)
+bool barOk = barstate.isconfirmed
+
+// -----------------------------------------------------------------------------
+// 4. PRICE ACTION, VOLUME, VWAP, HTF
+// -----------------------------------------------------------------------------
+float rsiV  = ta.rsi(close, rsiLen)
+float volMa = ta.sma(volume, volLen)
+bool  hasVol = not na(volMa) and volMa > 0
+bool  volClimax = hasVol and volume > volX * volMa
+bool  volDry    = hasVol and volume < 0.85 * volMa
+
+float bodyLow  = math.min(open, close)
+float bodyHigh = math.max(open, close)
+bool  bullWick = bodyLow - low  > wickAtr * atrV
+bool  bearWick = high - bodyHigh > wickAtr * atrV
+bool  bullBar  = close > open
+bool  bearBar  = close < open
+bool  engulfBull = bullBar and close > open[1] and open < close[1] and close[1] < open[1]
+bool  engulfBear = bearBar and close < open[1] and open > close[1] and close[1] > open[1]
+
+var float cumPv = 0.0
+var float cumV  = 0.0
+if ta.change(time("D")) != 0
+    cumPv := 0.0
+    cumV  := 0.0
+cumPv := cumPv + hlc3 * volume
+cumV  := cumV + volume
+float vwapV = cumV > 0 ? cumPv / cumV : close
+bool aboveVwap = close > vwapV
+bool belowVwap = close < vwapV
+
+float htfEma = request.security(syminfo.tickerid, htfTf, ta.ema(close, htfLen)[1], lookahead=barmerge.lookahead_off)
+bool  htfBull = not useHtf or (not na(htfEma) and close > htfEma)
+bool  htfBear = not useHtf or (not na(htfEma) and close < htfEma)
+
+// -----------------------------------------------------------------------------
+// 5. EYE -> TUSK -> TRUNK
+// -----------------------------------------------------------------------------
+bool fTrough = fastSp[1] < fastSp[2] and fastSp[1] <= nz(fastSp[3], fastSp[1] + 1e-9) and fastSp > fastSp[1]
+bool fPeak   = fastSp[1] > fastSp[2] and fastSp[1] >= nz(fastSp[3], fastSp[1] - 1e-9) and fastSp < fastSp[1]
+bool warm = not na(trunk) and not na(aT2)
+bool declineCtx = warm and ((close[1] < aS2[1]) or (aS2[1] < aS2[3]) or (longSp[1] < 0))
+bool rallyCtx   = warm and ((close[1] > aS2[1]) or (aS2[1] > aS2[3]) or (longSp[1] > 0))
+
+var int lastEyeBar = na
+bool eyeCool = na(lastEyeBar) or (bar_index - lastEyeBar) >= eyeCoolBars
+bool eyeBullRaw = fTrough and fastSp[1] <= eyeLevel and declineCtx and eyeCool
+bool eyeBearRaw = fPeak   and fastSp[1] >= -eyeLevel and rallyCtx and eyeCool
+if (eyeBullRaw or eyeBearRaw) and barOk
+    lastEyeBar := bar_index
+
+var int   bullEyeBar = na
+var float bullEyeLow = na
+var int   bearEyeBar = na
+var float bearEyeHigh = na
+if eyeBullRaw and barOk
+    bullEyeBar := bar_index
+    bullEyeLow := low[1]
+if eyeBearRaw and barOk
+    bearEyeBar := bar_index
+    bearEyeHigh := high[1]
+
+bool bullInWindow = not na(bullEyeBar) and (bar_index - bullEyeBar) <= tuskWindow
+bool bearInWindow = not na(bearEyeBar) and (bar_index - bearEyeBar) <= tuskWindow
+
+bool tuskBullRaw = bullInWindow and ta.crossover(aF1, aF2)
+bool tuskBearRaw = bearInWindow and ta.crossunder(aF1, aF2)
+
+bool reclaimBull = not needReclaim or close > aS2
+bool reclaimBear = not needReclaim or close < aS2
+bool breakBull   = not needBreak or close > high[1]
+bool breakBear   = not needBreak or close < low[1]
+
+bool stretchedDown = (aS2 - close) / atrV >= extAtr
+bool stretchedUp   = (close - aS2) / atrV >= extAtr
+
+float bullScore = 0.0
+if bullInWindow
+    bullScore := bullScore + 20
+if tuskBullRaw
+    bullScore := bullScore + 25
+if slowSp > 0 and trunkUp
+    bullScore := bullScore + 15
+if rsiV <= rsiBuy
+    bullScore := bullScore + 10
+if volClimax
+    bullScore := bullScore + 10
+if bullWick or engulfBull
+    bullScore := bullScore + 10
+if aboveVwap
+    bullScore := bullScore + 5
+if htfBull
+    bullScore := bullScore + 5
+if close > aB
+    bullScore := bullScore + 5
+if volDry
+    bullScore := bullScore - 5
+bullScore := math.max(0, math.min(100, bullScore))
+
+float bearScore = 0.0
+if bearInWindow
+    bearScore := bearScore + 20
+if tuskBearRaw
+    bearScore := bearScore + 25
+if slowSp < 0 and trunkDn
+    bearScore := bearScore + 15
+if rsiV >= rsiSell
+    bearScore := bearScore + 10
+if volClimax
+    bearScore := bearScore + 10
+if bearWick or engulfBear
+    bearScore := bearScore + 10
+if belowVwap
+    bearScore := bearScore + 5
+if htfBear
+    bearScore := bearScore + 5
+if close < aB
+    bearScore := bearScore + 5
+if volDry
+    bearScore := bearScore - 5
+bearScore := math.max(0, math.min(100, bearScore))
+
+bool buySignal  = bullInWindow and tuskBullRaw and reclaimBull and breakBull and bullScore >= minScore and tradeWindow and barOk
+bool sellSignal = bearInWindow and tuskBearRaw and reclaimBear and breakBear and bearScore >= minScore and tradeWindow and barOk
+
+var int  bullTuskBar = na
+var int  bearTuskBar = na
+var bool fullBullFired = false
+var bool fullBearFired = false
+if buySignal
+    bullTuskBar   := bar_index
+    fullBullFired := false
+if sellSignal
+    bearTuskBar   := bar_index
+    fullBearFired := false
+
+bool fullBull = not na(bullTuskBar) and not fullBullFired and (bar_index - bullTuskBar) <= fullWindow and ta.crossover(slowSp, 0.0) and trunkUp and tradeWindow and barOk
+bool fullBear = not na(bearTuskBar) and not fullBearFired and (bar_index - bearTuskBar) <= fullWindow and ta.crossunder(slowSp, 0.0) and trunkDn and tradeWindow and barOk
+if fullBull
+    fullBullFired := true
+if fullBear
+    fullBearFired := true
+
+var int lastExhBar = na
+bool exhCool = na(lastExhBar) or (bar_index - lastExhBar) >= eyeCoolBars
+bool bottomExhaustion = tradeWindow and barOk and exhCool and stretchedDown and ta.crossover(rsiV, rsiBuy) and (volClimax or bullWick or engulfBull)
+bool topExhaustion    = tradeWindow and barOk and exhCool and stretchedUp   and ta.crossunder(rsiV, rsiSell) and (volClimax or bearWick or engulfBear)
+if bottomExhaustion or topExhaustion
+    lastExhBar := bar_index
+
+// -----------------------------------------------------------------------------
+// 6. TRADE PLAN (entry / stop / T1 / T2)
+// -----------------------------------------------------------------------------
+float buyEntry  = close
+float bullSwing = na(bullEyeLow) ? low : math.min(bullEyeLow, low)
+float buyStop   = bullSwing - slBuf * atrV
+float buyRisk   = math.max(buyEntry - buyStop, syminfo.mintick)
+float buyT1     = buyEntry + t1R * buyRisk
+float buyT2     = buyEntry + t2R * buyRisk
+
+float sellEntry = close
+float bearSwing = na(bearEyeHigh) ? high : math.max(bearEyeHigh, high)
+float sellStop  = bearSwing + slBuf * atrV
+float sellRisk  = math.max(sellStop - sellEntry, syminfo.mintick)
+float sellT1    = sellEntry - t1R * sellRisk
+float sellT2    = sellEntry - t2R * sellRisk
+
+var array<line> planLines = array.new_line()
+if showPlans and buySignal
+    line e1 = line.new(bar_index, buyEntry, bar_index + planBars, buyEntry, color=color.new(color.lime, 20), width=1)
+    line e2 = line.new(bar_index, buyStop,  bar_index + planBars, buyStop,  color=color.new(color.red, 20),  width=1, style=line.style_dashed)
+    line e3 = line.new(bar_index, buyT1,    bar_index + planBars, buyT1,    color=color.new(color.aqua, 25), width=1, style=line.style_dotted)
+    line e4 = line.new(bar_index, buyT2,    bar_index + planBars, buyT2,    color=color.new(color.blue, 25), width=1, style=line.style_dotted)
+    array.push(planLines, e1)
+    array.push(planLines, e2)
+    array.push(planLines, e3)
+    array.push(planLines, e4)
+if showPlans and sellSignal
+    line s1 = line.new(bar_index, sellEntry, bar_index + planBars, sellEntry, color=color.new(color.red, 20), width=1)
+    line s2 = line.new(bar_index, sellStop,  bar_index + planBars, sellStop,  color=color.new(color.lime, 20), width=1, style=line.style_dashed)
+    line s3 = line.new(bar_index, sellT1,    bar_index + planBars, sellT1,    color=color.new(color.aqua, 25), width=1, style=line.style_dotted)
+    line s4 = line.new(bar_index, sellT2,    bar_index + planBars, sellT2,    color=color.new(color.blue, 25), width=1, style=line.style_dotted)
+    array.push(planLines, s1)
+    array.push(planLines, s2)
+    array.push(planLines, s3)
+    array.push(planLines, s4)
+
+if array.size(planLines) > 80
+    line.delete(array.shift(planLines))
+
+// -----------------------------------------------------------------------------
+// 7. PLOTS — ribbon
+// -----------------------------------------------------------------------------
+pF1 = plot(showRib ? aF1 : na, "EMA fast 1", color=color.new(color.yellow, 0), linewidth=1)
+pF2 = plot(showRib ? aF2 : na, "EMA fast 2", color=color.new(color.orange, 0), linewidth=1)
+pS1 = plot(showRib ? aS1 : na, "EMA slow 1", color=color.new(color.aqua, 0), linewidth=1)
+pS2 = plot(showRib ? aS2 : na, "EMA slow 2", color=color.new(color.blue, 0), linewidth=2)
+pL1 = plot(showLong ? aL1 : na, "EMA 34",  color=color.new(color.silver, 0),  linewidth=1)
+pL2 = plot(showLong ? aL2 : na, "EMA 89",  color=color.new(color.gray, 0),    linewidth=1)
+pT1 = plot(showLong ? aT1 : na, "EMA 144", color=color.new(color.purple, 20), linewidth=1)
+pT2 = plot(showLong ? aT2 : na, "EMA 233", color=color.new(color.maroon, 20), linewidth=2)
+
+color cloudCol = not showCloud ? color.new(color.gray, 100) : aF1 > aF2 ? color.new(color.lime, 82) : color.new(color.red, 82)
+color headCol  = not showCloud ? color.new(color.gray, 100) : aS1 > aS2 ? color.new(color.aqua, 88) : color.new(color.red, 88)
+fill(pF1, pF2, color=cloudCol, title="Tusk cloud")
+fill(pS1, pS2, color=headCol,  title="Head cloud")
+
+plotshape(showEyes and eyeBullRaw ? low - 0.4 * atrV : na, "EYE bottom", shape.circle, location.absolute, color.new(color.teal, 15), size=size.tiny)
+plotshape(showEyes and eyeBearRaw ? high + 0.4 * atrV : na, "EYE top", shape.circle, location.absolute, color.new(color.maroon, 0), size=size.tiny)
+
+// -----------------------------------------------------------------------------
+// 8. SIGNAL LABELS
+// -----------------------------------------------------------------------------
+if showPlans and buySignal
+    string bt = "🐘 BUY " + str.tostring(bullScore) + "%\nE " + str.tostring(buyEntry, format.mintick) + "\nSL " + str.tostring(buyStop, format.mintick) + "\nT1 " + str.tostring(buyT1, format.mintick) + "\nT2 " + str.tostring(buyT2, format.mintick)
+    label.new(bar_index, buyStop - 0.35 * atrV, bt, style=label.style_label_up, color=color.new(color.green, 20), textcolor=color.white, size=size.small, tooltip="Risk " + str.tostring(buyRisk, format.mintick) + " pts\nEye low " + str.tostring(bullEyeLow, format.mintick) + "\nRSI " + str.tostring(rsiV, "#.0"))
+if showPlans and sellSignal
+    string st = "🐘 SELL " + str.tostring(bearScore) + "%\nE " + str.tostring(sellEntry, format.mintick) + "\nSL " + str.tostring(sellStop, format.mintick) + "\nT1 " + str.tostring(sellT1, format.mintick) + "\nT2 " + str.tostring(sellT2, format.mintick)
+    label.new(bar_index, sellStop + 0.35 * atrV, st, style=label.style_label_down, color=color.new(color.red, 20), textcolor=color.white, size=size.small, tooltip="Risk " + str.tostring(sellRisk, format.mintick) + " pts\nEye high " + str.tostring(bearEyeHigh, format.mintick) + "\nRSI " + str.tostring(rsiV, "#.0"))
+
+if showExh and showPlans and bottomExhaustion and not buySignal
+    label.new(bar_index, low - 0.5 * atrV, "BOTTOM\n(price action)", style=label.style_label_up, color=color.new(color.olive, 30), textcolor=color.white, size=size.tiny)
+if showExh and showPlans and topExhaustion and not sellSignal
+    label.new(bar_index, high + 0.5 * atrV, "TOP\n(price action)", style=label.style_label_down, color=color.new(color.orange, 30), textcolor=color.white, size=size.tiny)
+
+if showPlans and fullBull
+    label.new(bar_index, low - 0.8 * atrV, "🐘 FULL ELEPHANT — TRUNK UP", style=label.style_label_up, color=color.new(color.blue, 25), textcolor=color.white, size=size.tiny)
+if showPlans and fullBear
+    label.new(bar_index, high + 0.8 * atrV, "🐘 FULL ELEPHANT — TRUNK DOWN", style=label.style_label_down, color=color.new(color.purple, 25), textcolor=color.white, size=size.tiny)
+
+// -----------------------------------------------------------------------------
+// 9. HUD
+// -----------------------------------------------------------------------------
+var table hud = table.new(position.top_right, 2, 8, bgcolor=color.new(color.black, 82), border_width=1, border_color=color.new(color.gray, 70), frame_width=1, frame_color=color.new(color.gray, 55))
+if showHud and barstate.islast
+    string stage = bullInWindow ? "BULL EYE → waiting TUSK" : bearInWindow ? "BEAR EYE → waiting TUSK" : not na(bullTuskBar) and (bar_index - bullTuskBar) <= fullWindow ? "BULL RUNNER" : not na(bearTuskBar) and (bar_index - bearTuskBar) <= fullWindow ? "BEAR RUNNER" : "SCANNING"
+    table.cell(hud, 0, 0, "🐘 ELEPHANT", text_color=color.new(color.yellow, 0), text_size=size.small)
+    table.cell(hud, 1, 0, tradeWindow ? "LIVE ✅" : "CLOSED ⛔", text_color=tradeWindow ? color.new(color.lime, 0) : color.new(color.red, 0), text_size=size.small)
+    table.cell(hud, 0, 1, "Stage", text_color=color.new(color.silver, 0), text_size=size.tiny)
+    table.cell(hud, 1, 1, stage, text_color=color.new(color.white, 0), text_size=size.tiny)
+    table.cell(hud, 0, 2, "Tusk / head", text_color=color.new(color.silver, 0), text_size=size.tiny)
+    table.cell(hud, 1, 2, str.tostring(fastSp, "#.00") + " / " + str.tostring(slowSp, "#.00"), text_color=fastSp > 0 ? color.new(color.lime, 0) : color.new(color.red, 0), text_size=size.tiny)
+    table.cell(hud, 0, 3, "Trunk", text_color=color.new(color.silver, 0), text_size=size.tiny)
+    table.cell(hud, 1, 3, str.tostring(trunk, "#.00") + (trunkUp ? " ▲" : " ▼"), text_color=trunkUp ? color.new(color.lime, 0) : color.new(color.red, 0), text_size=size.tiny)
+    table.cell(hud, 0, 4, "Bull / bear score", text_color=color.new(color.silver, 0), text_size=size.tiny)
+    table.cell(hud, 1, 4, str.tostring(bullScore) + "% / " + str.tostring(bearScore) + "%", text_color=bullScore > bearScore ? color.new(color.lime, 0) : color.new(color.red, 0), text_size=size.tiny)
+    table.cell(hud, 0, 5, "RSI", text_color=color.new(color.silver, 0), text_size=size.tiny)
+    table.cell(hud, 1, 5, str.tostring(rsiV, "#.0"), text_color=rsiV <= rsiBuy ? color.new(color.lime, 0) : rsiV >= rsiSell ? color.new(color.red, 0) : color.new(color.white, 0), text_size=size.tiny)
+    table.cell(hud, 0, 6, "VWAP", text_color=color.new(color.silver, 0), text_size=size.tiny)
+    table.cell(hud, 1, 6, str.tostring(vwapV, format.mintick) + (aboveVwap ? " ▲" : " ▼"), text_color=aboveVwap ? color.new(color.lime, 0) : color.new(color.red, 0), text_size=size.tiny)
+    table.cell(hud, 0, 7, "ATR / stop buf", text_color=color.new(color.silver, 0), text_size=size.tiny)
+    table.cell(hud, 1, 7, str.tostring(atrV, format.mintick) + " / " + str.tostring(slBuf, "#.00") + "x", text_color=color.new(color.white, 0), text_size=size.tiny)
+
+// -----------------------------------------------------------------------------
+// 10. ALERTS
+// -----------------------------------------------------------------------------
+alertcondition(eyeBullRaw, "Elephant EYE (bottom forming)", "🐘 ELEPHANT EYE — bottom forming on {{ticker}} {{interval}}. Wait for the TUSK.")
+alertcondition(eyeBearRaw, "Elephant EYE (top forming)", "🐘 ELEPHANT EYE — top forming on {{ticker}} {{interval}}. Wait for the TUSK.")
+alertcondition(buySignal, "Elephant BUY TUSK", "🐘 ELEPHANT BUY — {{ticker}} {{interval}} at {{close}}. Stop below the eye swing.")
+alertcondition(sellSignal, "Elephant SELL TUSK", "🐘 ELEPHANT SELL — {{ticker}} {{interval}} at {{close}}. Stop above the eye swing.")
+alertcondition(fullBull, "Elephant FULL (bullish)", "🐘 FULL ELEPHANT — trunk up on {{ticker}} {{interval}}.")
+alertcondition(fullBear, "Elephant FULL (bearish)", "🐘 FULL ELEPHANT — trunk down on {{ticker}} {{interval}}.")
+alertcondition(bottomExhaustion, "Elephant BOTTOM exhaustion", "🐘 BOTTOM exhaustion — {{ticker}} {{interval}} at {{close}}.")
+alertcondition(topExhaustion, "Elephant TOP exhaustion", "🐘 TOP exhaustion — {{ticker}} {{interval}} at {{close}}.")
+
+if buySignal
+    alert("🐘 ELEPHANT BUY | " + syminfo.ticker + " " + timeframe.period + " | E " + str.tostring(buyEntry, format.mintick) + " | SL " + str.tostring(buyStop, format.mintick) + " | T1 " + str.tostring(buyT1, format.mintick) + " | T2 " + str.tostring(buyT2, format.mintick) + " | score " + str.tostring(bullScore) + "%", alert.freq_once_per_bar_close)
+if sellSignal
+    alert("🐘 ELEPHANT SELL | " + syminfo.ticker + " " + timeframe.period + " | E " + str.tostring(sellEntry, format.mintick) + " | SL " + str.tostring(sellStop, format.mintick) + " | T1 " + str.tostring(sellT1, format.mintick) + " | T2 " + str.tostring(sellT2, format.mintick) + " | score " + str.tostring(bearScore) + "%", alert.freq_once_per_bar_close)

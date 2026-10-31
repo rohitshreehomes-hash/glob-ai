@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Elephant Indicator 🐘 — Live Replica Terminal</title>
+<style>
+  :root {
+    --bg:#080b11; --panel:#0e131d; --panel2:#131a28; --border:rgba(235,230,140,.22);
+    --gold:#ffd54f; --green:#00e676; --green2:#69f0ae; --red:#ff5252; --cyan:#29b6f6;
+    --muted:#8f9bb3; --txt:#eef2f9; --yellow:#ffe082;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:14px 18px 34px}
+  .topbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;background:linear-gradient(90deg,#0d1320,#121c2e);border:1px solid var(--border);border-radius:10px;margin-bottom:10px}
+  .brand h1{font-size:18px;color:var(--gold);letter-spacing:.3px}
+  .brand p{font-size:12px;color:var(--muted);margin-top:4px;max-width:820px}
+  .actions{display:flex;flex-wrap:wrap;gap:8px}
+  button{cursor:pointer;border:1px solid rgba(255,213,79,.35);background:var(--panel2);color:var(--txt);padding:7px 12px;border-radius:7px;font-size:12px;font-weight:600;transition:.15s}
+  button:hover{border-color:var(--gold);background:#1a2438}
+  button.active{background:linear-gradient(135deg,#1d3b2f,#102a22);border-color:var(--green);color:var(--green2)}
+  button.copy-primary{background:linear-gradient(135deg,#f5d64e,#ff9800);color:#090c12;border:none;font-weight:800}
+  button.copy-alt{background:linear-gradient(135deg,#29b6f6,#0277bd);color:#fff;border:none;font-weight:700}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px;font-size:12px;color:var(--muted)}
+  .controls label{display:flex;align-items:center;gap:6px}
+  select,input[type=range]{background:var(--panel2);color:var(--txt);border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:4px 7px;font-size:12px}
+  .grid{display:grid;grid-template-columns:2.2fr 1fr;gap:12px}
+  @media (max-width:1100px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:12px;margin-bottom:12px}
+  .card-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px}
+  .card-hdr h2{font-size:13.5px;color:var(--gold)}
+  .card-hdr span{font-size:11px;color:var(--muted)}
+  canvas{width:100%;display:block;border-radius:6px;background:#070a10}
+  #chart{height:430px}
+  #pane{height:220px}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--muted);margin-top:6px}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  td{padding:5px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
+  td:first-child{color:var(--muted)}
+  td:last-child{text-align:right;font-weight:700}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px}
+  .kpi{background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 11px}
+  .kpi .lbl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .kpi .val{font-size:18px;font-weight:800;margin-top:3px}
+  .pos{color:var(--green2)} .neg{color:#ff8a80} .neutral{color:var(--gold)}
+  .rules li{font-size:12px;color:#c3ccdd;margin-left:16px;margin-bottom:6px;line-height:1.45}
+  .rules b{color:var(--gold)}
+  .banner{font-size:11.5px;color:var(--muted);background:rgba(41,182,246,.08);border:1px solid rgba(41,182,246,.25);border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.5}
+  .banner b{color:var(--cyan)}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(80px);background:#10202f;border:1px solid var(--green);color:var(--green2);padding:9px 16px;border-radius:8px;font-size:12.5px;font-weight:700;opacity:0;transition:.25s;z-index:50}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <h1>🐘 ELEPHANT INDICATOR — INTRADAY TOPS &amp; BOTTOMS</h1>
+    <p><b>Eye → Tusk → Trunk</b> pattern engine in Pine v6 · fast pair EMA 5/8 · slow pair 13/21 · trunk 144/233 · confluence-scored BUY/SELL · session aware (NSE 09:15–15:30 IST / crypto 24×7).
+    This page runs the <b>same logic as the Pine file</b> in JavaScript on synthetic candles, so you can see the pattern before you paste it on TradingView.</p>
+  </div>
+  <div class="actions">
+    <button class="copy-primary" id="btnInd" onclick="copyPine('/api/pine-elephant','btnInd')">📋 Copy Pine v6 Indicator</button>
+    <button class="copy-alt" onclick="copyPine('/api/pine-overlay','btnOvr')" id="btnOvr">📋 Copy Price Overlay</button>
+    <button onclick="regen()">🔄 New demo data</button>
+    <button class="active" id="btnPlay" onclick="togglePlay()">▶ Play</button>
+  </div>
+</div>
+
+<div class="banner">
+  <b>Reconstruction notice:</b> the Upsurge.club “Elephant Indicator” is proprietary and its source is not published. This is an independent, open Pine v6 implementation of the publicly documented Elephant concept (fast/slow average pairs, the eye/tusk/trunk figure) plus the course rules: confirm every signal with price action, and never trade it during the opening auction. Demo candles below are synthetic — no performance claim is made. *T1 hit rate / avg R are simulated SL-first on that synthetic sample (40-bar horizon, 1R target).
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="lbl">Demo bars</div><div class="val" id="kpiBars">—</div></div>
+  <div class="kpi"><div class="lbl">Signals</div><div class="val neutral" id="kpiSig">—</div></div>
+  <div class="kpi"><div class="lbl">Bull / Bear</div><div class="val" id="kpiBB">—</div></div>
+  <div class="kpi"><div class="lbl">T1 hit rate*</div><div class="val" id="kpiWR">—</div></div>
+  <div class="kpi"><div class="lbl">Avg R*</div><div class="val" id="kpiR">—</div></div>
+</div>
+
+<div class="controls">
+  <label>Market
+    <select id="selSym">
+      <option value="NIFTY">NIFTY 50 (index)</option>
+      <option value="BANKNIFTY">BANKNIFTY</option>
+      <option value="SENSEX">SENSEX</option>
+      <option value="BTC">BTCUSD (crypto 24×7)</option>
+    </select>
+  </label>
+  <label>Timeframe
+    <select id="selTf">
+      <option value="5">5m</option>
+      <option value="3">3m</option>
+      <option value="15">15m</option>
+    </select>
+  </label>
+  <label>Visible bars <input type="range" id="rgView" min="80" max="900" value="240" step="20"></label>
+  <label><input type="checkbox" id="ckFill" checked> fills</label>
+  <label><input type="checkbox" id="ckPlans" checked> trade plans</label>
+  <label><input type="checkbox" id="ckEyes" checked> eyes</label>
+</div>
+
+<div class="grid">
+  <div>
+    <div class="card">
+      <div class="card-hdr"><h2>Price — Elephant signals &amp; trade plan</h2><span id="ohlc">—</span></div>
+      <canvas id="chart"></canvas>
+      <div class="legend">
+        <span><i class="dot" style="background:#ffe082"></i>EMA 5</span>
+        <span><i class="dot" style="background:#ff9800"></i>EMA 8</span>
+        <span><i class="dot" style="background:#29b6f6"></i>EMA 13</span>
+        <span><i class="dot" style="background:#5c6bc0"></i>EMA 21</span>
+        <span><i class="dot" style="background:#b0bec5"></i>EMA 34 / 89</span>
+        <span><i class="dot" style="background:#ab47bc"></i>EMA 144 / 233</span>
+        <span><i class="dot" style="background:#00bfa5"></i>EYE</span>
+        <span>🐘 BUY / SELL = TUSK</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-hdr"><h2>Elephant pane — tusk / head / trunk (ATR units)</h2><span id="paneInfo">—</span></div>
+      <canvas id="pane"></canvas>
+      <div class="legend">
+        <span><i class="dot" style="background:#ffeb3b"></i>fast pair (tusk)</span>
+        <span><i class="dot" style="background:#00e5ff"></i>slow pair (head)</span>
+        <span><i class="dot" style="background:#b0bec5"></i>long pair</span>
+        <span><i class="dot" style="background:#448aff"></i>trunk 144/233</span>
+        <span><i class="dot" style="background:#f06292"></i>price vs 200 EMA</span>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-hdr"><h2>Live HUD</h2><span id="hudState">—</span></div>
+      <table id="hudTable"></table>
+    </div>
+    <div class="card">
+      <div class="card-hdr"><h2>Recent signals</h2><span>synthetic data</span></div>
+      <table id="sigTable"></table>
+    </div>
+    <div class="card">
+      <div class="card-hdr"><h2>How to trade it (course rules)</h2></div>
+      <ul class="rules">
+        <li><b>1 · EYE</b> — fast pair prints a trough below the zero line after a decline. A bottom is <i>forming</i>. Do not enter yet.</li>
+        <li><b>2 · TUSK</b> — EMA 5 crosses back above EMA 8, price reclaims EMA 21 and breaks the previous bar high → the entry, ideally with volume expansion and an RSI turn up from oversold.</li>
+        <li><b>3 · TRUNK</b> — slow pair crosses above zero while the 144/233 trunk turns up → trend-change confirmation; keep the runner while the trunk rises.</li>
+        <li><b>Stop</b> — below the eye swing (or 0.3 ATR beyond it). <b>T1</b> at 1R, <b>T2</b> at 2R. Tops are the exact mirror.</li>
+        <li><b>Never</b> trade the first 5 min of the open or the last 10 min before the close — the indicator blocks those bars itself.</li>
+        <li><b>Always</b> confirm with price action: support/resistance, trendline, or a rejection candle. The elephant alone is a scanner, not a system.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Copied ✅</div>
+
+<script>
+/* =============================================================================
+   Elephant engine — 1:1 port of indicators/Elephant_Indicator.pine
+   ========================================================================== */
+const CFG = {
+  fast1:5, fast2:8, slow1:13, slow2:21, long1:34, long2:89, trunk1:144, trunk2:233,
+  trunkSm:5, biasLen:200, atrLen:14, eyeLevel:0, tuskWindow:10, fullWindow:15,
+  minScore:55, rsiLen:14, rsiBuy:35, rsiSell:65, volLen:20, volX:1.30,
+  wickAtr:0.35, extAtr:0.60, slBuf:0.30, t1R:1.0, t2R:2.0,
+  skipOpen:5, skipClose:10, needReclaim:true, needBreak:true, eyeCooldown:8
+};
+
+/* ---------- indicator maths ---------- */
+function ema(src, len){
+  const out = new Array(src.length).fill(NaN), k = 2/(len+1);
+  let prev = NaN;
+  for (let i=0;i<src.length;i++){
+    const v = src[i];
+    if (Number.isNaN(v)) { out[i]=prev; continue; }
+    prev = Number.isNaN(prev) ? v : v*k + prev*(1-k);
+    out[i]=prev;
+  }
+  return out;
+}
+function sma(src, len){
+  const out=new Array(src.length).fill(NaN); let sum=0;
+  for (let i=0;i<src.length;i++){
+    sum += src[i];
+    if (i>=len) sum -= src[i-len];
+    if (i>=len-1) out[i]=sum/len;
+  }
+  return out;
+}
+function rma(src, len){
+  const out=new Array(src.length).fill(NaN); let prev=NaN, sum=0;
+  for (let i=0;i<src.length;i++){
+    if (i<len) { sum += src[i]; if (i===len-1){ prev=sum/len; out[i]=prev; } continue; }
+    prev = (prev*(len-1) + src[i]) / len;
+    out[i]=prev;
+  }
+  return out;
+}
+function atr(c, len){
+  const tr = c.map((b,i)=> i===0 ? b.high-b.low
+    : Math.max(b.high-b.low, Math.abs(b.high-c[i-1].close), Math.abs(b.low-c[i-1].close)));
+  return rma(tr, len);
+}
+function rsi(src, len){
+  const up=new Array(src.length).fill(0), dn=new Array(src.length).fill(0);
+  for (let i=1;i<src.length;i++){
+    const d = src[i]-src[i-1];
+    up[i]= Math.max(d,0); dn[i]= Math.max(-d,0);
+  }
+  const u=rma(up,len), d=rma(dn,len);
+  return src.map((_,i)=> d[i]===0 ? 100 : 100 - 100/(1+u[i]/d[i]));
+}
+const nz = (v,f=0)=> Number.isNaN(v)||v===undefined||v===null ? f : v;
+const crossOver  = (a,b,i)=> i>0 && a[i-1]<=b[i-1] && a[i]>b[i];
+const crossUnder = (a,b,i)=> i>0 && a[i-1]>=b[i-1] && a[i]<b[i];
+
+/* ---------- session helpers (IST) ---------- */
+function istMinutes(ms){
+  const d = new Date(ms + 5.5*3600*1000);
+  return d.getUTCHours()*60 + d.getUTCMinutes();
+}
+
+function runEngine(candles, market){
+  const n = candles.length;
+  const close = candles.map(b=>b.close);
+  const eF1=ema(close,CFG.fast1), eF2=ema(close,CFG.fast2), eS1=ema(close,CFG.slow1), eS2=ema(close,CFG.slow2);
+  const eL1=ema(close,CFG.long1), eL2=ema(close,CFG.long2), eT1=ema(close,CFG.trunk1), eT2=ema(close,CFG.trunk2);
+  const eB=ema(close,CFG.biasLen), atrArr=atr(candles,CFG.atrLen), rsiArr=rsi(close,CFG.rsiLen);
+  const volMa=sma(candles.map(b=>b.volume),CFG.volLen);
+
+  const fastSp=[], slowSp=[], longSp=[], trunkRaw=[], biasSp=[];
+  for (let i=0;i<n;i++){
+    const a = nz(atrArr[i], 1e-9) || 1e-9;
+    fastSp[i]=(eF1[i]-eF2[i])/a;
+    slowSp[i]=(eS1[i]-eS2[i])/a;
+    longSp[i]=(eL1[i]-eL2[i])/a;
+    trunkRaw[i]=(eT1[i]-eT2[i])/a;
+    biasSp[i]=(close[i]-eB[i])/a;
+  }
+  const trunk = ema(trunkRaw.map(v=>nz(v)), CFG.trunkSm);
+
+  /* session VWAP anchored to the IST day */
+  const vwap=new Array(n).fill(NaN);
+  let cpv=0, cv=0, lastDay=null;
+  for (let i=0;i<n;i++){
+    const day = market==='CRYPTO' ? null : new Date(candles[i].openTime + 5.5*3600*1000).toISOString().slice(0,10);
+    if (day!==lastDay){ cpv=0; cv=0; lastDay=day; }
+    const tp=(candles[i].high+candles[i].low+candles[i].close)/3;
+    cpv += tp*candles[i].volume; cv += candles[i].volume;
+    vwap[i] = cv>0 ? cpv/cv : close[i];
+  }
+
+  const zeroArr = new Array(n).fill(0);
+  const out = { fastSp, slowSp, longSp, trunk, biasSp, atr:atrArr, rsi:rsiArr, vwap, eF1,eF2,eS1,eS2,eL1,eL2,eT1,eT2, eyes:[], signals:[], exhausted:[] };
+  let bullEyeBar=-1, bullEyeLow=NaN, bearEyeBar=-1, bearEyeHigh=NaN;
+  let bullTuskBar=-1, bearTuskBar=-1, fullBullFired=false, fullBearFired=false;
+  let lastEyeBar=-999, lastExhBar=-999;
+
+  for (let i=4;i<n;i++){
+    const b=candles[i];
+    const fTrough = fastSp[i-1] < fastSp[i-2] && fastSp[i-1] <= nz(fastSp[i-3], fastSp[i-1]+1e-9) && fastSp[i] > fastSp[i-1];
+    const fPeak   = fastSp[i-1] > fastSp[i-2] && fastSp[i-1] >= nz(fastSp[i-3], fastSp[i-1]-1e-9) && fastSp[i] < fastSp[i-1];
+    const declineCtx = close[i-1] < eS2[i-1] || eS2[i-1] < eS2[i-3] || longSp[i-1] < 0;
+    const rallyCtx   = close[i-1] > eS2[i-1] || eS2[i-1] > eS2[i-3] || longSp[i-1] > 0;
+    const eyeCool = (i - lastEyeBar) >= CFG.eyeCooldown;
+    const eyeBullRaw = fTrough && fastSp[i-1] <= CFG.eyeLevel && declineCtx && eyeCool;
+    const eyeBearRaw = fPeak   && fastSp[i-1] >= -CFG.eyeLevel && rallyCtx && eyeCool;
+    if (eyeBullRaw){ bullEyeBar=i; bullEyeLow=b.low; out.eyes.push({i,dir:1}); lastEyeBar=i; }
+    if (eyeBearRaw){ bearEyeBar=i; bearEyeHigh=b.high; out.eyes.push({i,dir:-1}); lastEyeBar=i; }
+
+    const bullInWindow = bullEyeBar>=0 && (i-bullEyeBar)<=CFG.tuskWindow;
+    const bearInWindow = bearEyeBar>=0 && (i-bearEyeBar)<=CFG.tuskWindow;
+    const tuskBullRaw = bullInWindow && crossOver(eF1,eF2,i);
+    const tuskBearRaw = bearInWindow && crossUnder(eF1,eF2,i);
+
+    const vwapV = nz(vwap[i], close[i]);
+    const isCrypto = market==='CRYPTO';
+    const mins = istMinutes(b.openTime);
+    const inSess = isCrypto || (mins>=555 && mins<=930);
+    const edgeBlock = !isCrypto && inSess && (mins < 555+CFG.skipOpen || mins > 930-CFG.skipClose);
+    const tradeWindow = inSess && !edgeBlock;
+
+    const volOk = !Number.isNaN(volMa[i]) && volMa[i]>0;
+    const volClimax = volOk && b.volume > CFG.volX*volMa[i];
+    const volDry = volOk && b.volume < 0.85*volMa[i];
+    const bodyLow=Math.min(b.open,b.close), bodyHigh=Math.max(b.open,b.close);
+    const bullWick = (bodyLow-b.low) > CFG.wickAtr*nz(atrArr[i],1);
+    const bearWick = (b.high-bodyHigh) > CFG.wickAtr*nz(atrArr[i],1);
+    const bullBar=b.close>b.open, bearBar=b.close<b.open;
+    const engulfBull = bullBar && b.close>candles[i-1].open && b.open<candles[i-1].close && candles[i-1].close<candles[i-1].open;
+    const engulfBear = bearBar && b.close<candles[i-1].open && b.open>candles[i-1].close && candles[i-1].close>candles[i-1].open;
+    const aboveVwap=b.close>vwapV, belowVwap=b.close<vwapV;
+    const htfBull = b.close>eB[i], htfBear = b.close<eB[i];
+    const stretchedDown = (eS2[i]-b.close)/nz(atrArr[i],1) >= CFG.extAtr;
+    const stretchedUp   = (b.close-eS2[i])/nz(atrArr[i],1) >= CFG.extAtr;
+
+    let bullScore=0;
+    if (bullInWindow) bullScore+=20;
+    if (tuskBullRaw) bullScore+=25;
+    if (slowSp[i]>0 && trunk[i]>nz(trunk[i-1],trunk[i])) bullScore+=15;
+    if (rsiArr[i]<=CFG.rsiBuy) bullScore+=10;
+    if (volClimax) bullScore+=10;
+    if (bullWick||engulfBull) bullScore+=10;
+    if (aboveVwap) bullScore+=5;
+    if (htfBull) bullScore+=5;
+    if (b.close>eB[i]) bullScore+=5;
+    if (volDry) bullScore-=5;
+    bullScore=Math.max(0,Math.min(100,bullScore));
+
+    let bearScore=0;
+    if (bearInWindow) bearScore+=20;
+    if (tuskBearRaw) bearScore+=25;
+    if (slowSp[i]<0 && trunk[i]<nz(trunk[i-1],trunk[i])) bearScore+=15;
+    if (rsiArr[i]>=CFG.rsiSell) bearScore+=10;
+    if (volClimax) bearScore+=10;
+    if (bearWick||engulfBear) bearScore+=10;
+    if (belowVwap) bearScore+=5;
+    if (htfBear) bearScore+=5;
+    if (b.close<eB[i]) bearScore+=5;
+    if (volDry) bearScore-=5;
+    bearScore=Math.max(0,Math.min(100,bearScore));
+
+    const buySignal  = bullInWindow && tuskBullRaw && (!CFG.needReclaim || b.close>eS2[i]) && (!CFG.needBreak || b.close>candles[i-1].high) && bullScore>=CFG.minScore && tradeWindow;
+    const sellSignal = bearInWindow && tuskBearRaw && (!CFG.needReclaim || b.close<eS2[i]) && (!CFG.needBreak || b.close<candles[i-1].low) && bearScore>=CFG.minScore && tradeWindow;
+
+    if (buySignal){
+      bullTuskBar=i; fullBullFired=false;
+      const sl = Math.min(bullEyeLow, b.low) - CFG.slBuf*nz(atrArr[i],1);
+      const risk = Math.max(b.close-sl, 0.05);
+      out.signals.push({i, dir:1, score:bullScore, entry:b.close, sl, t1:b.close+CFG.t1R*risk, t2:b.close+CFG.t2R*risk, risk, eyeLow:bullEyeLow});
+    }
+    if (sellSignal){
+      bearTuskBar=i; fullBearFired=false;
+      const sl = Math.max(bearEyeHigh, b.high) + CFG.slBuf*nz(atrArr[i],1);
+      const risk = Math.max(sl-b.close, 0.05);
+      out.signals.push({i, dir:-1, score:bearScore, entry:b.close, sl, t1:b.close-CFG.t1R*risk, t2:b.close-CFG.t2R*risk, risk, eyeHigh:bearEyeHigh});
+    }
+
+    const fullBull = bullTuskBar>=0 && !fullBullFired && (i-bullTuskBar)<=CFG.fullWindow && crossOver(slowSp,zeroArr,i) && trunk[i]>nz(trunk[i-1],trunk[i]) && tradeWindow;
+    const fullBear = bearTuskBar>=0 && !fullBearFired && (i-bearTuskBar)<=CFG.fullWindow && crossUnder(slowSp,zeroArr,i) && trunk[i]<nz(trunk[i-1],trunk[i]) && tradeWindow;
+    if (fullBull){ fullBullFired=true; out.signals.push({i, dir:1, full:true, score:bullScore, entry:b.close, sl:b.low, t1:b.close, t2:b.close, risk:1}); }
+    if (fullBear){ fullBearFired=true; out.signals.push({i, dir:-1, full:true, score:bearScore, entry:b.close, sl:b.high, t1:b.close, t2:b.close, risk:1}); }
+
+    const exhCool = (i - lastExhBar) >= CFG.eyeCooldown;
+    const bottomExh = exhCool && stretchedDown && rsiArr[i-1]<=CFG.rsiBuy && rsiArr[i]>CFG.rsiBuy && (volClimax||bullWick||engulfBull);
+    const topExh    = exhCool && stretchedUp   && rsiArr[i-1]>=CFG.rsiSell && rsiArr[i]<CFG.rsiSell && (volClimax||bearWick||engulfBear);
+    if (bottomExh){ out.exhausted.push({i,dir:1}); lastExhBar=i; }
+    if (topExh){ out.exhausted.push({i,dir:-1}); lastExhBar=i; }
+
+    // HUD state on this bar
+    out.state = bullInWindow ? 'BULL EYE → waiting TUSK'
+      : bearInWindow ? 'BEAR EYE → waiting TUSK'
+      : bullTuskBar>=0 && (i-bullTuskBar)<=CFG.fullWindow ? 'BULL RUNNER'
+      : bearTuskBar>=0 && (i-bearTuskBar)<=CFG.fullWindow ? 'BEAR RUNNER' : 'SCANNING';
+    out.last = {i, bullInWindow, bearInWindow, bullScore, bearScore, tradeWindow, vwap:vwapV, trunkUp: trunk[i]>nz(trunk[i-1],trunk[i])};
+  }
+  return out;
+}
+
+/* =============================================================================
+   Synthetic market data (regimes that actually produce elephant patterns)
+   ========================================================================== */
+function rngFactory(seed){ let s = seed>>>0; return ()=> ((s = (1664525*s + 1013904223)>>>0)/4294967296); }
+
+function makeCandles(symbol, tfMin){
+  const rnd = rngFactory(20261031 ^ symbol.length*7919 ^ tfMin);
+  const base = symbol==='BTC' ? 108000 : symbol==='SENSEX' ? 81200 : symbol==='BANKNIFTY' ? 52100 : 24050;
+  const isCrypto = symbol==='BTC';
+  const kindSets = [
+    ['trend_down','range','breakout_up','trend_up','chop'],
+    ['breakout_down','trend_down','range','breakout_up','trend_up'],
+    ['range','chop','trend_up','trend_down','breakout_up'],
+    ['trend_up','chop','breakout_up','range','trend_down'],
+    ['breakout_down','range','trend_up','trend_down','breakout_up']
+  ];
+  const days = 8, barsPerDay = isCrypto ? 96 : Math.round(375/tfMin);
+  const candles = [];
+  let px = base;
+  const dayStartUTC = Date.UTC(2026, 9, 12, 3, 45); // 12 Oct 2026, 09:15 IST
+  for (let d=0; d<days; d++){
+    const kinds = kindSets[(d + symbol.length) % kindSets.length];
+    const per = Math.ceil(barsPerDay / kinds.length);
+    for (let k=0;k<kinds.length;k++){
+      const kind = kinds[k];
+      const o0 = px;
+      const drift = kind==='trend_up' ? 1.0 : kind==='trend_down' ? -0.95 : 0;
+      const amp = base*(kind==='range'?0.0016:kind==='chop'?0.0011:0.0006);
+      let sp = o0;
+      for (let b=0;b<per && candles.length < days*barsPerDay + barsPerDay; b++){
+        let dd = drift * base*0.00008 * (tfMin/5);
+        if (kind==='breakout_up' && b>=per*0.45) dd = base*0.00023*(tfMin/5);
+        if (kind==='breakout_down' && b>=per*0.45) dd = -base*0.00021*(tfMin/5);
+        if (kind==='range') dd = (o0 + Math.sin(b/5.5)*amp - sp)*0.24;
+        if (kind==='chop') dd = (o0 + Math.sin(b/2.7)*amp*0.7 - sp)*0.30;
+        const noise = (rnd()-0.5)*amp*0.55;
+        const o = sp + (rnd()-0.5)*base*0.00004;
+        const c = o + dd + noise;
+        const wick = base*0.00006 + rnd()*amp*0.55;
+        const openTime = isCrypto
+          ? Date.UTC(2026,9,12) + d*86400000 + (k*per+b)*tfMin*60000
+          : dayStartUTC + d*86400000 + (k*per+b)*tfMin*60000;
+        candles.push({
+          open:o, close:c, high:Math.max(o,c)+wick, low:Math.min(o,c)-wick,
+          volume: Math.round(90000 + rnd()*110000 + (kind.startsWith('breakout') && b>per*0.45 ? 160000 : 0) + (Math.abs(c-o)>amp*0.8?70000:0)),
+          openTime
+        });
+        sp = c;
+      }
+      px = sp;
+    }
+    px *= (1 + (rnd()-0.5)*0.0016);
+  }
+  return candles.slice(0, days*barsPerDay);
+}
+
+/* =============================================================================
+   Rendering
+   ========================================================================== */
+const state = { symbol:'NIFTY', tf:5, candles:[], eng:null, view:240, playing:false, timer:null, fill:true, plans:true, eyes:true };
+
+const $ = id => document.getElementById(id);
+const chart = $('chart'), pane = $('pane');
+
+function sizeCanvas(cv, h){
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth || cv.parentElement.clientWidth;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx, w, h};
+}
+
+function fmt(v, dec){ return v===undefined||Number.isNaN(v) ? '—' : Number(v).toLocaleString('en-IN',{minimumFractionDigits:dec??2, maximumFractionDigits:dec??2}); }
+
+function drawChart(){
+  const {ctx, w, h} = sizeCanvas(chart, 430);
+  ctx.clearRect(0,0,w,h);
+  const padR=64, padL=6, padT=10, padB=18;
+  const c = state.candles, eng = state.eng;
+  const end = c.length;
+  const start = Math.max(0, end - state.view);
+  const bars = c.slice(start, end);
+  if (!bars.length) return;
+
+  let lo = Math.min(...bars.map(b=>b.low)), hi = Math.max(...bars.map(b=>b.high));
+  const series = [eng.eS2, eng.eT1, eng.eT2, eng.eL2].map(a=>a.slice(start,end)).flat().filter(v=>!Number.isNaN(v));
+  lo = Math.min(lo, ...series); hi = Math.max(hi, ...series);
+  const pad = (hi-lo)*0.08 || 1; lo-=pad; hi+=pad;
+
+  const X = i => padL + (i+0.5) * ((w-padL-padR) / bars.length);
+  const Y = v => padT + (hi-v)/(hi-lo) * (h-padT-padB);
+  const bw = Math.max(1.6, (w-padL-padR)/bars.length*0.62);
+
+  // grid + price axis
+  ctx.strokeStyle='rgba(255,255,255,0.045)'; ctx.fillStyle='#8f9bb3'; ctx.font='10px monospace'; ctx.lineWidth=1;
+  for (let g=0; g<=5; g++){
+    const v = lo + (hi-lo)*g/5, y = Y(v);
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+    ctx.fillText(fmt(v,1), w-padR+4, y+3);
+  }
+
+  // ribbon fills (tusk / head clouds)
+  if (state.fill){
+    const cloud = (a,b,colUp,colDn)=>{
+      for (let i=0;i<bars.length;i++){
+        const gi = start+i;
+        if (i===0) continue;
+        const col = a[gi] > b[gi] ? colUp : colDn;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(X(i-1), Y(a[gi-1])); ctx.lineTo(X(i), Y(a[gi]));
+        ctx.lineTo(X(i), Y(b[gi])); ctx.lineTo(X(i-1), Y(b[gi-1]));
+        ctx.closePath(); ctx.fill();
+      }
+    };
+    cloud(eng.eF1, eng.eF2, 'rgba(0,230,118,0.10)', 'rgba(255,82,82,0.10)');
+    cloud(eng.eS1, eng.eS2, 'rgba(41,182,246,0.10)', 'rgba(255,82,82,0.10)');
+  }
+
+  // EMAs
+  const line = (arr, color, width, dash)=>{
+    ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=width; ctx.setLineDash(dash||[]);
+    let started=false;
+    for (let i=0;i<bars.length;i++){
+      const v = arr[start+i];
+      if (Number.isNaN(v)) { started=false; continue; }
+      const x=X(i), y=Y(v);
+      if (!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  };
+  line(eng.eT2,'rgba(171,71,188,0.75)',1.4);
+  line(eng.eT1,'rgba(171,71,188,0.55)',1);
+  line(eng.eL2,'rgba(176,190,197,0.55)',1);
+  line(eng.eL1,'rgba(176,190,197,0.75)',1);
+  line(eng.eS2,'#5c6bc0',1.6);
+  line(eng.eS1,'#29b6f6',1.1);
+  line(eng.eF2,'#ff9800',1.1);
+  line(eng.eF1,'#ffe082',1.8);
+
+  // candles
+  bars.forEach((b,i)=>{
+    const x=X(i), up=b.close>=b.open;
+    ctx.strokeStyle = up ? '#26a69a' : '#ef5350';
+    ctx.fillStyle   = up ? '#26a69a' : '#ef5350';
+    ctx.beginPath(); ctx.moveTo(x,Y(b.high)); ctx.lineTo(x,Y(b.low)); ctx.lineWidth=1; ctx.stroke();
+    const y1=Y(Math.max(b.open,b.close)), y2=Y(Math.min(b.open,b.close));
+    ctx.fillRect(x-bw/2, y1, bw, Math.max(1,y2-y1));
+  });
+
+  // trade plan lines
+  if (state.plans){
+    eng.signals.filter(s=>!s.full).forEach(s=>{
+      if (s.i < start) return;
+      const x0 = X(s.i-start), x1 = X(Math.min(bars.length-1, s.i-start + 24));
+      const seg = (v,col,dash)=>{ ctx.beginPath(); ctx.strokeStyle=col; ctx.lineWidth=1; ctx.setLineDash(dash||[]); ctx.moveTo(x0,Y(v)); ctx.lineTo(x1,Y(v)); ctx.stroke(); ctx.setLineDash([]); };
+      seg(s.entry, s.dir>0?'rgba(0,230,118,.85)':'rgba(255,82,82,.85)');
+      seg(s.sl, 'rgba(255,82,82,.5)', [4,3]);
+      seg(s.t1, 'rgba(41,182,246,.55)', [2,3]);
+      seg(s.t2, 'rgba(68,138,255,.45)', [2,3]);
+    });
+  }
+
+  // eyes + signals
+  if (state.eyes) eng.eyes.forEach(e=>{
+    if (e.i < start) return;
+    const x=X(e.i-start), y = Y(c[e.i].low - (c[e.i].high-c[e.i].low)*0.25);
+    ctx.beginPath(); ctx.arc(x, y+2, 3, 0, Math.PI*2);
+    ctx.fillStyle = e.dir>0 ? '#00bfa5' : '#8d6e63'; ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=1; ctx.stroke();
+  });
+
+  const labelBox = (x,y,text,bg,fg,up)=>{
+    ctx.font='bold 10px -apple-system,sans-serif';
+    const wl = ctx.measureText(text).width + 12, hl=17;
+    const bx = Math.max(padL+2, Math.min(w-padR-wl-2, x-wl/2));
+    const by = up ? y-hl-6 : y+6;
+    ctx.fillStyle=bg; roundRect(ctx,bx,by,wl,hl,4); ctx.fill();
+    ctx.fillStyle=fg; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(text, bx+wl/2, by+hl/2+0.5);
+    ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  };
+
+  eng.signals.forEach(s=>{
+    if (s.i < start) return;
+    const x=X(s.i-start);
+    if (s.full){
+      labelBox(x, s.dir>0 ? Y(c[s.i].low)+10 : Y(c[s.i].high)-10, s.dir>0?'🐘 FULL':'🐘 FULL', 'rgba(68,138,255,.85)', '#fff', s.dir<0);
+    } else {
+      labelBox(x, s.dir>0 ? Y(c[s.i].low)-2 : Y(c[s.i].high)+2, (s.dir>0?'BUY ':'SELL ')+s.score+'%', s.dir>0?'rgba(0,200,110,.92)':'rgba(230,60,60,.92)', '#fff', s.dir>0);
+    }
+  });
+
+  // last price tag
+  const lastC = c[c.length-1].close, yLast=Y(lastC);
+  ctx.fillStyle='rgba(255,213,79,.9)'; roundRect(ctx, w-padR+1, yLast-8, padR-4, 16, 3); ctx.fill();
+  ctx.fillStyle='#0a0d14'; ctx.font='bold 10px monospace'; ctx.fillText(fmt(lastC,1), w-padR+5, yLast+3.5);
+
+  state._coords = {start, X, w, padL, padR};
+  $('ohlc').textContent = `${state.symbol} · ${state.tf}m · O ${fmt(lastC,1)}  H ${fmt(c[c.length-1].high,1)}  L ${fmt(c[c.length-1].low,1)}  C ${fmt(lastC,1)}`;
+}
+
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+function drawPane(){
+  const {ctx, w, h} = sizeCanvas(pane, 220);
+  ctx.clearRect(0,0,w,h);
+  const padR=54, padL=6, padT=8, padB=16;
+  const eng=state.eng, c=state.candles;
+  const end=c.length, start=Math.max(0,end-state.view);
+  const f=eng.fastSp.slice(start,end), s=eng.slowSp.slice(start,end), l=eng.longSp.slice(start,end), t=eng.trunk.slice(start,end), b=eng.biasSp.slice(start,end);
+  const all=[...f,...s,...l,...t,...b].filter(v=>!Number.isNaN(v));
+  let lo=Math.min(0,...all), hi=Math.max(0,...all);
+  const pad=(hi-lo)*0.1||0.5; lo-=pad; hi+=pad;
+  const X=i=> padL + (i+0.5)*((w-padL-padR)/f.length);
+  const Y=v=> padT + (hi-v)/(hi-lo)*(h-padT-padB);
+
+  ctx.strokeStyle='rgba(255,255,255,.05)';
+  for(let g=0;g<=4;g++){ const v=lo+(hi-lo)*g/4, y=Y(v); ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke(); }
+
+  // fills
+  for(let i=1;i<f.length;i++){
+    ctx.fillStyle = f[i] < f[i-1] ? 'rgba(255,82,82,0.16)' : (f[i] > 0 && eng.eF1[start+i] > eng.eF2[start+i] ? 'rgba(0,230,118,0.16)' : 'rgba(255,235,59,0.16)');
+    ctx.beginPath(); ctx.moveTo(X(i-1),Y(f[i-1])); ctx.lineTo(X(i),Y(f[i])); ctx.lineTo(X(i),Y(0)); ctx.lineTo(X(i-1),Y(0)); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = s[i] < s[i-1] ? 'rgba(255,82,82,0.10)' : 'rgba(0,229,255,0.10)';
+    ctx.beginPath(); ctx.moveTo(X(i-1),Y(s[i-1])); ctx.lineTo(X(i),Y(s[i])); ctx.lineTo(X(i),Y(0)); ctx.lineTo(X(i-1),Y(0)); ctx.closePath(); ctx.fill();
+  }
+
+  const pl=(arr,color,width)=>{ ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=width; arr.forEach((v,i)=>{ if(Number.isNaN(v))return; const x=X(i),y=Y(v); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); };
+  pl(l,'rgba(176,190,197,.8)',1);
+  pl(b,'rgba(240,98,146,.65)',1);
+  pl(t,'#448aff',1.8);
+  pl(s,'#00e5ff',1.5);
+  pl(f,'#ffeb3b',2);
+
+  // zero line
+  ctx.beginPath(); ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.setLineDash([3,3]); ctx.moveTo(padL,Y(0)); ctx.lineTo(w-padR,Y(0)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#8f9bb3'; ctx.font='10px monospace';
+  ctx.fillText('0.0', w-padR+4, Y(0)+3);
+
+  // eyes in pane
+  if (state.eyes) eng.eyes.forEach(e=>{
+    if (e.i<start) return;
+    const x=X(e.i-start), y=Y(eng.fastSp[e.i]);
+    ctx.beginPath(); ctx.arc(x,y,3.2,0,Math.PI*2); ctx.fillStyle=e.dir>0?'#00bfa5':'#c62828'; ctx.fill();
+  });
+
+  // signals
+  eng.signals.filter(s2=>!s2.full && s2.i>=start).forEach(s2=>{
+    const x=X(s2.i-start);
+    ctx.beginPath(); ctx.moveTo(x, Y(0)+ (s2.dir>0?14:-14));
+    ctx.lineTo(x-4, Y(0)+(s2.dir>0?7:-7)); ctx.lineTo(x+4, Y(0)+(s2.dir>0?7:-7));
+    ctx.closePath(); ctx.fillStyle=s2.dir>0?'#00e676':'#ff5252'; ctx.fill();
+  });
+
+  $('paneInfo').textContent = `tusk ${fmt(eng.fastSp.at(-1),2)} · head ${fmt(eng.slowSp.at(-1),2)} · trunk ${fmt(eng.trunk.at(-1),2)}`;
+}
+
+/* -------- HUD / tables / stats -------- */
+function outcome(sig){
+  const c=state.candles, end=Math.min(c.length, sig.i+40);
+  for (let j=sig.i+1;j<end;j++){
+    if (sig.dir>0){ if (c[j].low<=sig.sl) return 'SL'; if (c[j].high>=sig.t1) return 'T1'; }
+    else { if (c[j].high>=sig.sl) return 'SL'; if (c[j].low<=sig.t1) return 'T1'; }
+  }
+  return 'open';
+}
+
+function updateHud(){
+  const eng=state.eng, c=state.candles, last=eng.last;
+  if (!last) return;
+  const rows = [
+    ['Stage', eng.state, eng.state.includes('BULL')?'pos':eng.state.includes('BEAR')?'neg':'neutral'],
+    ['Session', last.tradeWindow?'OPEN ✅':'BLOCKED ⛔', last.tradeWindow?'pos':'neg'],
+    ['Fast pair (tusk)', fmt(eng.fastSp.at(-1),2), eng.fastSp.at(-1)>0?'pos':'neg'],
+    ['Slow pair (head)', fmt(eng.slowSp.at(-1),2), eng.slowSp.at(-1)>0?'pos':'neg'],
+    ['Trunk 144/233', fmt(eng.trunk.at(-1),2), last.trunkUp?'pos':'neg'],
+    ['Price vs 200 EMA', fmt(eng.biasSp.at(-1),2)+' ATR', eng.biasSp.at(-1)>0?'pos':'neg'],
+    ['RSI', fmt(eng.rsi.at(-1),1), eng.rsi.at(-1)<=CFG.rsiBuy?'pos':eng.rsi.at(-1)>=CFG.rsiSell?'neg':''],
+    ['VWAP', fmt(eng.vwap.at(-1),1), c.at(-1).close>eng.vwap.at(-1)?'pos':'neg'],
+    ['Bull / bear score', last.bullScore+'% / '+last.bearScore+'%', last.bullScore>last.bearScore?'pos':'neg'],
+    ['ATR', fmt(eng.atr.at(-1),1), '']
+  ];
+  $('hudTable').innerHTML = rows.map(([k,v,cls])=>`<tr><td>${k}</td><td class="${cls}">${v}</td></tr>`).join('');
+  $('hudState').textContent = state.symbol + ' · ' + state.tf + 'm';
+
+  const sigs = eng.signals.filter(s=>!s.full);
+  const bulls = sigs.filter(s=>s.dir>0).length, bears = sigs.filter(s=>s.dir<0).length;
+  let wins=0, closed=0, sumR=0;
+  sigs.forEach(s=>{ const o=outcome(s); if(o==='T1'){wins++;closed++;sumR+=1;} else if(o==='SL'){closed++;sumR-=1;} });
+  $('kpiBars').textContent = state.candles.length;
+  $('kpiSig').textContent = sigs.length;
+  $('kpiBB').innerHTML = `<span class="pos">${bulls}▲</span> / <span class="neg">${bears}▼</span>`;
+  $('kpiWR').textContent = closed ? Math.round(100*wins/closed)+'%' : '—';
+  $('kpiWR').className = 'val ' + (closed && wins/closed>=0.5 ? 'pos':'neg');
+  $('kpiR').textContent = closed ? (sumR/closed).toFixed(2)+'R' : '—';
+  $('kpiR').className = 'val ' + (sumR>=0?'pos':'neg');
+
+  const recent = sigs.slice(-7).reverse();
+  $('sigTable').innerHTML = recent.length ? recent.map(s=>{
+    const t=new Date(state.candles[s.i].openTime+5.5*3600*1000).toISOString().slice(11,16);
+    const o=outcome(s);
+    return `<tr><td>${t} IST</td><td class="${s.dir>0?'pos':'neg'}">${s.dir>0?'BUY':'SELL'} ${s.score}%</td><td class="${o==='T1'?'pos':o==='SL'?'neg':'neutral'}">${o}</td></tr>`;
+  }).join('') : '<tr><td>No signals in this sample</td><td></td><td></td></tr>';
+}
+
+function renderAll(){ drawChart(); drawPane(); updateHud(); }
+
+/* -------- data / controls -------- */
+function rebuild(){
+  state.symbol = $('selSym').value;
+  state.tf = Number($('selTf').value);
+  const market = state.symbol==='BTC' ? 'CRYPTO' : 'INDEX';
+  state.candles = makeCandles(state.symbol, state.tf);
+  state.eng = runEngine(state.candles, market);
+  state.view = Math.min(Number($('rgView').value), state.candles.length);
+  renderAll();
+}
+function regen(){ rebuild(); toast('New synthetic sample generated'); }
+
+function togglePlay(){
+  state.playing = !state.playing;
+  $('btnPlay').classList.toggle('active', state.playing);
+  $('btnPlay').textContent = state.playing ? '⏸ Pause' : '▶ Play';
+  if (state.timer) { clearInterval(state.timer); state.timer=null; }
+  if (!state.playing) return;
+  let v = Math.min(120, state.candles.length);
+  $('rgView').value = v;
+  state.timer = setInterval(()=>{
+    v = Math.min(Number($('rgView').max), v + 4);
+    $('rgView').value = v; state.view = v;
+    renderAll();
+    if (v >= Number($('rgView').max)){ togglePlay(); }
+  }, 60);
+}
+
+async function copyPine(url, btnId){
+  try{
+    const r = await fetch(url);
+    const text = await r.text();
+    await navigator.clipboard.writeText(text);
+    toast('Pine v6 script copied — paste into TradingView Pine Editor');
+  }catch(e){
+    try{
+      const r = await fetch(url); const text = await r.text();
+      const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+      toast('Pine v6 script copied');
+    }catch(e2){ toast('Copy failed — open ' + url); }
+  }
+}
+let toastTimer=null;
+function toast(msg){
+  const el=$('toast'); el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'), 2600);
+}
+
+$('selSym').addEventListener('change', rebuild);
+$('selTf').addEventListener('change', rebuild);
+$('rgView').addEventListener('input', ()=>{ state.view=Number($('rgView').value); renderAll(); });
+$('ckFill').addEventListener('change', e=>{ state.fill=e.target.checked; drawChart(); });
+$('ckPlans').addEventListener('change', e=>{ state.plans=e.target.checked; drawChart(); });
+$('ckEyes').addEventListener('change', e=>{ state.eyes=e.target.checked; drawChart(); drawPane(); });
+window.addEventListener('resize', ()=>renderAll());
+
+rebuild();
+</script>
+</body>
+</html>
