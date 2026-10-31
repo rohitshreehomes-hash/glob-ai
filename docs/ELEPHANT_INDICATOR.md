@@ -6,7 +6,7 @@ Two files, one engine:
 | :--- | :--- | :--- |
 | [`indicators/Elephant_Indicator.pine`](../indicators/Elephant_Indicator.pine) | separate oscillator pane | The full elephant: fast pair, slow pair, long pair, trunk, EYE / TUSK / TRUNK pattern engine, confluence score, HUD, gauge table, 8 alerts |
 | [`indicators/Elephant_Signals_Overlay.pine`](../indicators/Elephant_Signals_Overlay.pine) | price chart | Same engine drawn on price with 🐘 BUY/SELL labels, entry / stop / T1 / T2 trade plan and plan lines |
-| [`indicators/Elephant_Zones.pine`](../indicators/Elephant_Zones.pine) | price chart | **The look from the course video**: grey top/bottom zones (supply above, demand below) extended to the right, dotted reaction edge, tap / break alerts |
+| [`indicators/Elephant_Zones.pine`](../indicators/Elephant_Zones.pine) | price chart | **The look from the course video**: grey top/bottom zones (supply above, demand below) extended to the right, dotted reaction edge, tap / break alerts — from **swing pivots** *and* from **PDH / PDL / PWH / PWL** |
 
 Live demo terminal (runs the same maths in JavaScript on synthetic candles, with a copy-to-clipboard for both Pine files):
 `npm start` → <http://localhost:8080/elephant>
@@ -40,6 +40,20 @@ The course video shows ETH 15m with long **light-grey horizontal bands** sitting
 | Mitigation | a close beyond the zone by `0.15 ATR` freezes the box and fades it (or deletes it, your choice) |
 | Recycling | max 16 zones; the oldest is removed so the chart never becomes a grey wall |
 | Optional | body anchoring, minimum gap from the opposite side, TOP/BOTTOM tags, tap ● markers |
+
+### Higher-timeframe levels (the second source)
+
+| Level | Zone | Default | When it is created |
+| :--- | :--- | :--- | :--- |
+| **PDH** previous day high | symmetric band `PDH ± 0.125 ATR` (0.25 ATR total) | ON | first bar of each new day |
+| **PDL** previous day low | same | ON | first bar of each new day |
+| **PDC** previous day close | same | OFF | first bar of each new day |
+| **PWH** previous week high | same | ON | first bar of each new week |
+| **PWL** previous week low | same | ON | first bar of each new week |
+
+They are read with `request.security(syminfo.tickerid, "D"/"W", high[1], lookahead=barmerge.lookahead_off)` — i.e. the **previous completed** daily/weekly bar, so they never repaint — and they are created **once per new day / new week** (`timeframe.change`), not once per bar. HTF zones are drawn with a thicker border, carry their name (`PDH 2,333.11`), obey the same mitigation / recycling rules, and are shown as PDH/PDL and PWH/PWL values in the HUD. On a daily chart the daily levels are skipped (`timeframe.isintraday` guard) so they cannot stack.
+
+**Combining both:** run with swing zones ON and PDH/PDL/PWH/PWL ON. The grey wall of the video was a top/bottom map; the HTF bands are the heavier ones that institutional traders watch, and the swing bands are the local ones you actually enter from.
 
 Settings that matter: `Pivot strength` 5 (lower = more zones), `Zone depth` 0.35 ATR (higher = fatter bands), `Maximum zones` 16, theme `Grey (video style)` / `Red-Green` / `Blue-Orange` / `Mono dark`.
 
@@ -126,7 +140,7 @@ Each fires **once per closed bar** (`alert.freq_once_per_bar_close`), and the BU
 | PineTS 0.13.1 bar-by-bar VM, 900 synthetic NIFTY 5m bars | `Elephant_Indicator.pine` → **0 runtime errors**, 16 plot/table/label streams |
 | Same VM, overlay file | **0 runtime errors**, 18 streams |
 | Same VM, zones file | **0 runtime errors**; 16 live boxes / 16 dotted lines / 16 labels at the right of a 900-bar feed (8 resistance + 8 support, 8 mitigated) |
-| PineForge + g++ on the zones file | **0 errors**, 1,684 C++ lines, `rc = 0` |
+| PineForge + g++ on the zones file | **0 errors**, 1,913 C++ lines (swing + HTF levels), `rc = 0` |
 | Signal sanity on that feed | 55 eyes → 4 BUY TUSK, 4 SELL TUSK, 5 FULL ELEPHANT confirmations, 8 top / 9 bottom exhaustion events (≈0.7 scored entries per session — a scanner cadence, not a machine gun) |
 | JS mirror in `preview/elephant.html` | renders both canvases + HUD + stats against a DOM stub with **0 runtime errors**; identical state machine, session gate and scoring |
 
