@@ -57,13 +57,14 @@
 <div class="topbar">
   <div class="brand">
     <h1>🐘 ELEPHANT INDICATOR — INTRADAY TOPS &amp; BOTTOMS</h1>
-    <p><b>Eye → Tusk → Trunk</b> pattern engine in Pine v6 · fast pair EMA 5/8 · slow pair 13/21 · trunk 144/233 · confluence-scored BUY/SELL · grey top/bottom zones (the look from the course video) · session aware (NSE 09:15–15:30 IST / crypto 24×7).
+    <p><b>Eye → Tusk → Trunk</b> engine + the exact video construction: tops as <b>orange bands</b>, bottoms as <b>cyan/green bands</b>, key levels as <b>blue dotted</b> lines — built from plotted level pairs + <code>fill()</code>, which is why the price axis shows coloured tags (orange / green / blue). Session aware (NSE 09:15–15:30 IST / crypto 24×7).
     This page runs the <b>same logic as the Pine file</b> in JavaScript on synthetic candles, so you can see the pattern before you paste it on TradingView.</p>
   </div>
   <div class="actions">
     <button class="copy-primary" id="btnInd" onclick="copyPine('/api/pine-elephant','btnInd')">📋 Copy Pine v6 Indicator</button>
     <button class="copy-alt" onclick="copyPine('/api/pine-overlay','btnOvr')" id="btnOvr">📋 Copy Price Overlay</button>
-    <button class="copy-alt" onclick="copyPine('/api/pine-zones','btnZon')" id="btnZon" style="background:linear-gradient(135deg,#78909c,#455a64)">📋 Copy Zones (video style)</button>
+    <button class="copy-alt" onclick="copyPine('/api/pine-bands','btnBnd')" id="btnBnd" style="background:linear-gradient(135deg,#ff9800,#e65100)">📋 Copy Bands (exact video look)</button>
+    <button class="copy-alt" onclick="copyPine('/api/pine-zones','btnZon')" id="btnZon" style="background:linear-gradient(135deg,#78909c,#455a64)">📋 Copy Zones (box version)</button>
     <button onclick="regen()">🔄 New demo data</button>
     <button class="active" id="btnPlay" onclick="togglePlay()">▶ Play</button>
   </div>
@@ -101,8 +102,9 @@
   <label><input type="checkbox" id="ckFill" checked> fills</label>
   <label><input type="checkbox" id="ckPlans" checked> trade plans</label>
   <label><input type="checkbox" id="ckEyes" checked> eyes</label>
-  <label><input type="checkbox" id="ckZones" checked> grey zones</label>
-  <label><input type="checkbox" id="ckHtf" checked> PDH/PDL/PWH/PWL</label>
+  <label><input type="checkbox" id="ckBands" checked> coloured bands (video)</label>
+  <label><input type="checkbox" id="ckZones"> grey boxes</label>
+  <label><input type="checkbox" id="ckHtf" checked> PDH/PDL dotted</label>
 </div>
 
 <div class="grid">
@@ -119,8 +121,9 @@
         <span><i class="dot" style="background:#ab47bc"></i>EMA 144 / 233</span>
         <span><i class="dot" style="background:#00bfa5"></i>EYE</span>
         <span>🐘 BUY / SELL = TUSK</span>
-        <span><i class="dot" style="background:#9e9e9e;opacity:.6"></i>top / bottom zones (grey bands)</span>
-        <span><i class="dot" style="background:#616161"></i>PDH / PDL / PWH / PWL levels</span>
+        <span><i class="dot" style="background:#ff9800"></i>resistance band (top)</span>
+        <span><i class="dot" style="background:#00bcd4"></i>support band (bottom)</span>
+        <span><i class="dot" style="background:#2962ff"></i>PDH / PDL key levels</span>
       </div>
     </div>
     <div class="card">
@@ -500,10 +503,87 @@ function buildHTFZones(candles, eng, market, depthAtr){
   return zones.filter(z=>!z.broken || z.end > n-120);
 }
 
+/* ---------- plotted bands (exact port of Elephant_Bands.pine) ---------- */
+function buildBands(candles, eng, len, depthAtr, bufAtr, maxBands){
+  const n = candles.length;
+  const res = [], sup = [], liveR = [], liveS = [];
+  const atrAt = i => eng.atr[i] || eng.atr[i-1] || 1;
+  for (let i=len; i<n; i++){
+    const a = atrAt(i);
+    for (let k=liveR.length-1;k>=0;k--){
+      if (candles[i].close > liveR[k].top + bufAtr*a){ liveR[k].end = i; res.push(liveR.splice(k,1)[0]); }
+    }
+    for (let k=liveS.length-1;k>=0;k--){
+      if (candles[i].close < liveS[k].bot - bufAtr*a){ liveS[k].end = i; sup.push(liveS.splice(k,1)[0]); }
+    }
+    const j = i - len;
+    let isHi = true, isLo = true;
+    for (let k=1;k<=len;k++){
+      if (j-k < 0 || j+k >= n){ isHi = false; isLo = false; break; }
+      if (candles[j].high <= candles[j-k].high || candles[j].high <= candles[j+k].high) isHi = false;
+      if (candles[j].low  >= candles[j-k].low  || candles[j].low  >= candles[j+k].low ) isLo = false;
+    }
+    if (isHi){
+      liveR.unshift({top:candles[j].high, bot:candles[j].high - depthAtr*a, bar:j, end:n-1});
+      if (liveR.length > maxBands){ const old = liveR.pop(); old.end = i; res.push(old); }
+    }
+    if (isLo){
+      liveS.unshift({top:candles[j].low + depthAtr*a, bot:candles[j].low, bar:j, end:n-1});
+      if (liveS.length > maxBands){ const old = liveS.pop(); old.end = i; sup.push(old); }
+    }
+  }
+  return {res, sup, liveR, liveS};
+}
+
+/* ---------- previous day high / low step series (blue dotted) ---------- */
+function buildSessionLevels(candles, market){
+  const n = candles.length, pdh = new Array(n).fill(NaN), pdl = new Array(n).fill(NaN);
+  const shift = market === 'CRYPTO' ? 0 : 5.5*3600*1000;
+  const key = ms => new Date(ms + shift).toISOString().slice(0,10);
+  let curKey = null, hi = -Infinity, lo = Infinity, prevHi = NaN, prevLo = NaN;
+  for (let i=0;i<n;i++){
+    const k = key(candles[i].openTime);
+    if (k !== curKey){
+      if (curKey !== null){ prevHi = hi; prevLo = lo; }
+      curKey = k; hi = candles[i].high; lo = candles[i].low;
+    } else {
+      hi = Math.max(hi, candles[i].high); lo = Math.min(lo, candles[i].low);
+    }
+    pdh[i] = prevHi; pdl[i] = prevLo;
+  }
+  return {pdh, pdl};
+}
+
+/* ---------- coloured price-axis tags (price scale labels of the plots) ---------- */
+function drawAxisTags(ctx, w, padR, tags){
+  const sorted = tags.slice().sort((a,b)=>a.y-b.y);
+  const picked = [];
+  let lastY = -1e9;
+  for (const t of sorted){ if (t.y - lastY >= 12){ picked.push(t); lastY = t.y; } }
+  ctx.font = 'bold 9px ui-monospace, monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  picked.forEach(t=>{
+    const text = t.text;
+    const tw = Math.min(padR - 5, ctx.measureText(text).width + 8);
+    const x = w - padR + 2, y = t.y - 6.5;
+    ctx.fillStyle = t.bg;
+    roundRect(ctx, x, y, tw, 13, 3);
+    ctx.fill();
+    ctx.strokeStyle = t.border;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = t.color;
+    ctx.fillText(text, x + 4, t.y);
+  });
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
 /* =============================================================================
    Rendering
    ========================================================================== */
-const state = { symbol:'NIFTY', tf:5, candles:[], eng:null, view:240, playing:false, timer:null, fill:true, plans:true, eyes:true, zones:true, htf:true };
+const state = { symbol:'NIFTY', tf:5, candles:[], eng:null, view:240, playing:false, timer:null, fill:true, plans:true, eyes:true, zones:false, htf:true, bands:true };
 
 const $ = id => document.getElementById(id);
 const chart = $('chart'), pane = $('pane');
@@ -522,7 +602,7 @@ function fmt(v, dec){ return v===undefined||Number.isNaN(v) ? '—' : Number(v).
 function drawChart(){
   const {ctx, w, h} = sizeCanvas(chart, 430);
   ctx.clearRect(0,0,w,h);
-  const padR=64, padL=6, padT=10, padB=18;
+  const padR = state.bands ? 82 : 64, padL=6, padT=10, padB=18;
   const c = state.candles, eng = state.eng;
   const end = c.length;
   const start = Math.max(0, end - state.view);
@@ -546,7 +626,57 @@ function drawChart(){
     ctx.fillText(fmt(v,1), w-padR+4, y+3);
   }
 
-  // grey top / bottom zones (behind everything, video style)
+  const axisTags = [];
+
+  // plotted bands — the exact video construction (plot pair + fill, coloured axis tags)
+  if (state.bands && state._bands){
+    const a = state._bands;
+    const drawBand = (z, isRes)=>{
+      if (z.bar > end || z.end < start) return;
+      const i0 = Math.max(0, z.bar - start);
+      const i1 = Math.min(bars.length-1, z.end - start);
+      if (i1 < i0) return;
+      const x0 = X(i0), x1 = X(i1), yT = Y(z.top), yB = Y(z.bot);
+      ctx.fillStyle = isRes ? 'rgba(255,152,0,0.17)' : 'rgba(0,188,212,0.19)';
+      ctx.fillRect(x0, yT, Math.max(2,x1-x0), Math.max(1.5,yB-yT));
+      ctx.strokeStyle = isRes ? 'rgba(255,152,0,0.95)' : 'rgba(0,200,83,0.95)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(x0, yT+0.5); ctx.lineTo(x1, yT+0.5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0, yB+0.5); ctx.lineTo(x1, yB+0.5); ctx.stroke();
+      if (z.end >= end-1){
+        const c = isRes ? '#ff9800' : '#00c853';
+        const bg = isRes ? 'rgba(255,152,0,0.16)' : 'rgba(0,200,83,0.14)';
+        axisTags.push({y:yT, text:fmt(z.top,1), color:c, bg:bg, border:c});
+        axisTags.push({y:yB, text:fmt(z.bot,1), color:c, bg:bg, border:c});
+      }
+    };
+    (a.res || []).concat(a.liveR || []).forEach(z=>drawBand(z, true));
+    (a.sup || []).concat(a.liveS || []).forEach(z=>drawBand(z, false));
+
+    // blue dotted previous-day levels
+    if (state.htf && state._levels){
+      [['pdh','PDH'],['pdl','PDL']].forEach(([k,label])=>{
+        const arr = state._levels[k];
+        let i = 0;
+        while (i < bars.length){
+          const v = arr[start+i];
+          if (!isFinite(v)){ i++; continue; }
+          let j = i;
+          while (j+1 < bars.length && arr[start+j+1] === v) j++;
+          const y = Y(v);
+          ctx.beginPath(); ctx.setLineDash([2,3]);
+          ctx.strokeStyle = 'rgba(41,98,255,0.85)'; ctx.lineWidth = 1.3;
+          ctx.moveTo(X(i), y); ctx.lineTo(X(j), y); ctx.stroke(); ctx.setLineDash([]);
+          if (j === bars.length-1){
+            axisTags.push({y:y, text:fmt(v,1), color:'#2962ff', bg:'rgba(41,98,255,0.10)', border:'rgba(41,98,255,0.65)'});
+          }
+          i = j+1;
+        }
+      });
+    }
+  }
+
+  // grey top / bottom zones (box version, alternative style)
   if (state.zones){
     const zs = state._zones || [];
     zs.forEach(z=>{
@@ -669,6 +799,8 @@ function drawChart(){
   ctx.fillStyle='rgba(255,213,79,.9)'; roundRect(ctx, w-padR+1, yLast-8, padR-4, 16, 3); ctx.fill();
   ctx.fillStyle='#0a0d14'; ctx.font='bold 10px monospace'; ctx.fillText(fmt(lastC,1), w-padR+5, yLast+3.5);
 
+  if (axisTags.length) drawAxisTags(ctx, w, padR, axisTags);
+
   state._coords = {start, X, w, padL, padR};
   $('ohlc').textContent = `${state.symbol} · ${state.tf}m · O ${fmt(lastC,1)}  H ${fmt(c[c.length-1].high,1)}  L ${fmt(c[c.length-1].low,1)}  C ${fmt(lastC,1)}`;
 }
@@ -790,6 +922,8 @@ function rebuild(){
   const market = state.symbol==='BTC' ? 'CRYPTO' : 'INDEX';
   state.candles = makeCandles(state.symbol, state.tf);
   state.eng = runEngine(state.candles, market);
+  state._bands = buildBands(state.candles, state.eng, 5, 0.35, 0.15, 3);
+  state._levels = buildSessionLevels(state.candles, market);
   const swingZones = buildZones(state.candles, state.eng, 5, 0.35, 16);
   const htfZones = state.htf ? buildHTFZones(state.candles, state.eng, state.symbol==='BTC'?'CRYPTO':'INDEX', 0.25) : [];
   state._zones = [...swingZones, ...htfZones].sort((a,b)=>a.bar-b.bar).slice(-28);
@@ -842,6 +976,7 @@ $('ckFill').addEventListener('change', e=>{ state.fill=e.target.checked; drawCha
 $('ckPlans').addEventListener('change', e=>{ state.plans=e.target.checked; drawChart(); });
 $('ckEyes').addEventListener('change', e=>{ state.eyes=e.target.checked; drawChart(); drawPane(); });
 $('ckZones').addEventListener('change', e=>{ state.zones=e.target.checked; drawChart(); });
+$('ckBands').addEventListener('change', e=>{ state.bands=e.target.checked; drawChart(); });
 $('ckHtf').addEventListener('change', e=>{ state.htf=e.target.checked; rebuild(); });
 window.addEventListener('resize', ()=>renderAll());
 

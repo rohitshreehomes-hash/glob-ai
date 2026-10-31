@@ -1,0 +1,193 @@
+//@version=6
+// =============================================================================
+//  ELEPHANT BANDS  🐘  —  tops (orange) & bottoms (cyan/green) as plotted bands
+// -----------------------------------------------------------------------------
+//  Rebuilt from the course video frame (ETH/USD 15m): the tool does NOT use
+//  rectangles.  Each zone is a PAIR OF PLOTTED LEVELS with fill() between them,
+//  which is why TradingView prints coloured price-axis tags on both edges
+//  (orange tags for resistance, green tags for support) and why the bands start
+//  at the bar where the top/bottom was confirmed and run to the right.
+//
+//    RESISTANCE band  :  plot(top) + plot(bottom) + fill(orange)
+//                        top = pivot high, bottom = pivot high - 0.35 ATR
+//    SUPPORT band     :  plot(top) + plot(bottom) + fill(cyan)
+//                        bottom = pivot low, top = pivot low + 0.35 ATR,
+//                        borders green (matches the video)
+//    KEY LEVELS       :  previous day high / low as blue dotted plots
+//                        (plot style_circles + trackprice) — the blue dashed
+//                        lines with blue axis tags in the video
+//
+//  Up to 3 live bands per side.  A band disappears (plot -> na) the moment
+//  price closes through it by the break buffer, exactly like the video where
+//  old bands stop mid-chart and a new one starts at a new level.
+//  Nothing repaints: pivots are confirmed, signals run on closed bars.
+//
+//  Companion files:
+//    indicators/Elephant_Indicator.pine        (pane: eye / tusk / trunk)
+//    indicators/Elephant_Signals_Overlay.pine  (price: BUY/SELL + trade plan)
+//    indicators/Elephant_Zones.pine            (box version incl. PDH/PDL/PWH/PWL)
+// =============================================================================
+indicator("Elephant Bands 🐘 [Tops & Bottoms]", shorttitle="ELEPHANT BD", overlay=true, max_bars_back=500)
+
+// -----------------------------------------------------------------------------
+// 1. INPUTS
+// -----------------------------------------------------------------------------
+G_B = "1. Bands (tops = orange, bottoms = cyan)"
+G_K = "2. Key levels (blue dotted)"
+G_V = "3. Style"
+
+int   pivotLen  = input.int(5, "Pivot strength (bars each side)", minval=2, maxval=50, group=G_B)
+float depthAtr  = input.float(0.35, "Band depth (x ATR14)", minval=0.05, maxval=2.0, step=0.05, group=G_B)
+int   atrLen    = input.int(14, "ATR length", minval=2, maxval=100, group=G_B)
+float brkBufAtr = input.float(0.15, "Break buffer beyond the band (x ATR)", minval=0.0, maxval=2.0, step=0.05, group=G_B)
+int   maxBands  = input.int(3, "Live bands per side", minval=1, maxval=3, group=G_B)
+float minGapAtr = input.float(0.50, "Minimum distance between two bands (x ATR)", minval=0.0, maxval=5.0, step=0.05, group=G_B)
+
+bool  showPd    = input.bool(true, "Previous day high / low", group=G_K)
+bool  showPw    = input.bool(false, "Previous week high / low", group=G_K)
+bool  showSwings= input.bool(false, "Also plot the last confirmed swing high / low", group=G_K)
+color keyCol    = input.color(#2962ff, "Key level colour", group=G_K)
+
+color resLine   = input.color(#ff9800, "Resistance border", group=G_V)
+color resFill   = input.color(color.new(#ff9800, 86), "Resistance fill", group=G_V)
+color supLine   = input.color(#00c853, "Support border", group=G_V)
+color supFill   = input.color(color.new(#00bcd4, 86), "Support fill", group=G_V)
+int   lineWidth = input.int(1, "Border width", minval=1, maxval=3, group=G_V)
+
+// -----------------------------------------------------------------------------
+// 2. CORE
+// -----------------------------------------------------------------------------
+float atrRaw = ta.atr(atrLen)
+float atrV   = nz(atrRaw, ta.tr) > 0 ? nz(atrRaw, ta.tr) : syminfo.mintick
+float depth  = math.max(depthAtr * atrV, nz(syminfo.mintick, 0.0001) * 2)
+float brkBuf = brkBufAtr * atrV
+float minGap = minGapAtr * atrV
+
+float pivotHi = ta.pivothigh(pivotLen, pivotLen)
+float pivotLo = ta.pivotlow(pivotLen, pivotLen)
+
+// -----------------------------------------------------------------------------
+// 3. BAND STATE — three slots per side, newest in slot 1
+// -----------------------------------------------------------------------------
+var float r1T = na
+var float r1B = na
+var float r2T = na
+var float r2B = na
+var float r3T = na
+var float r3B = na
+var float s1T = na
+var float s1B = na
+var float s2T = na
+var float s2B = na
+var float s3T = na
+var float s3B = na
+
+// last confirmed swings (optional single plots)
+var float lastSwingHigh = na
+var float lastSwingLow  = na
+
+// --- new resistance band
+if barstate.isconfirmed and not na(pivotHi)
+    lastSwingHigh := pivotHi
+    bool farEnough = na(r1T) or math.abs(pivotHi - r1T) >= minGap
+    if farEnough
+        r3T := r2T
+        r3B := r2B
+        r2T := r1T
+        r2B := r1B
+        r1T := pivotHi
+        r1B := pivotHi - depth
+
+// --- new support band
+if barstate.isconfirmed and not na(pivotLo)
+    lastSwingLow := pivotLo
+    bool farEnoughS = na(s1B) or math.abs(pivotLo - s1B) >= minGap
+    if farEnoughS
+        s3T := s2T
+        s3B := s2B
+        s2T := s1T
+        s2B := s1B
+        s1T := pivotLo + depth
+        s1B := pivotLo
+
+// --- mitigation: a band dies when price closes through it
+if barstate.isconfirmed
+    if not na(r1T) and close > r1T + brkBuf
+        r1T := na
+        r1B := na
+    if not na(r2T) and close > r2T + brkBuf
+        r2T := na
+        r2B := na
+    if not na(r3T) and close > r3T + brkBuf
+        r3T := na
+        r3B := na
+    if not na(s1B) and close < s1B - brkBuf
+        s1T := na
+        s1B := na
+    if not na(s2B) and close < s2B - brkBuf
+        s2T := na
+        s2B := na
+    if not na(s3B) and close < s3B - brkBuf
+        s3T := na
+        s3B := na
+
+// -----------------------------------------------------------------------------
+// 4. HIGHER-TIMEFRAME KEY LEVELS (blue dotted)
+// -----------------------------------------------------------------------------
+float pdHigh = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_off)
+float pdLow  = request.security(syminfo.tickerid, "D", low[1],  lookahead=barmerge.lookahead_off)
+float pwHigh = request.security(syminfo.tickerid, "W", high[1], lookahead=barmerge.lookahead_off)
+float pwLow  = request.security(syminfo.tickerid, "W", low[1],  lookahead=barmerge.lookahead_off)
+
+// -----------------------------------------------------------------------------
+// 5. PLOTS — pairs of levels + fill = the bands
+// -----------------------------------------------------------------------------
+pR1T = plot(maxBands >= 1 ? r1T : na, "Resistance 1 top",    color=resLine, style=plot.style_linebr, linewidth=lineWidth)
+pR1B = plot(maxBands >= 1 ? r1B : na, "Resistance 1 bottom", color=resLine, style=plot.style_linebr, linewidth=lineWidth)
+pR2T = plot(maxBands >= 2 ? r2T : na, "Resistance 2 top",    color=resLine, style=plot.style_linebr, linewidth=lineWidth)
+pR2B = plot(maxBands >= 2 ? r2B : na, "Resistance 2 bottom", color=resLine, style=plot.style_linebr, linewidth=lineWidth)
+pR3T = plot(maxBands >= 3 ? r3T : na, "Resistance 3 top",    color=resLine, style=plot.style_linebr, linewidth=lineWidth)
+pR3B = plot(maxBands >= 3 ? r3B : na, "Resistance 3 bottom", color=resLine, style=plot.style_linebr, linewidth=lineWidth)
+
+pS1T = plot(maxBands >= 1 ? s1T : na, "Support 1 top",    color=supLine, style=plot.style_linebr, linewidth=lineWidth)
+pS1B = plot(maxBands >= 1 ? s1B : na, "Support 1 bottom", color=supLine, style=plot.style_linebr, linewidth=lineWidth)
+pS2T = plot(maxBands >= 2 ? s2T : na, "Support 2 top",    color=supLine, style=plot.style_linebr, linewidth=lineWidth)
+pS2B = plot(maxBands >= 2 ? s2B : na, "Support 2 bottom", color=supLine, style=plot.style_linebr, linewidth=lineWidth)
+pS3T = plot(maxBands >= 3 ? s3T : na, "Support 3 top",    color=supLine, style=plot.style_linebr, linewidth=lineWidth)
+pS3B = plot(maxBands >= 3 ? s3B : na, "Support 3 bottom", color=supLine, style=plot.style_linebr, linewidth=lineWidth)
+
+fill(pR1T, pR1B, color=resFill, title="Resistance band 1")
+fill(pR2T, pR2B, color=resFill, title="Resistance band 2")
+fill(pR3T, pR3B, color=resFill, title="Resistance band 3")
+fill(pS1T, pS1B, color=supFill, title="Support band 1")
+fill(pS2T, pS2B, color=supFill, title="Support band 2")
+fill(pS3T, pS3B, color=supFill, title="Support band 3")
+
+plot(showPd ? pdHigh : na, "PDH", color=keyCol, style=plot.style_circles, linewidth=1, trackprice=true)
+plot(showPd ? pdLow  : na, "PDL", color=keyCol, style=plot.style_circles, linewidth=1, trackprice=true)
+plot(showPw ? pwHigh : na, "PWH", color=color.new(keyCol, 35), style=plot.style_circles, linewidth=1, trackprice=true)
+plot(showPw ? pwLow  : na, "PWL", color=color.new(keyCol, 35), style=plot.style_circles, linewidth=1, trackprice=true)
+plot(showSwings ? lastSwingHigh : na, "Last swing high", color=color.new(#ff5252, 20), style=plot.style_linebr, linewidth=1, trackprice=true)
+plot(showSwings ? lastSwingLow  : na, "Last swing low",  color=color.new(#00e676, 20), style=plot.style_linebr, linewidth=1, trackprice=true)
+
+// -----------------------------------------------------------------------------
+// 6. ALERTS
+// -----------------------------------------------------------------------------
+bool newResBand = barstate.isconfirmed and not na(pivotHi)
+bool newSupBand = barstate.isconfirmed and not na(pivotLo)
+bool resBroken  = barstate.isconfirmed and ((not na(r1T[1]) and close > r1T[1] + brkBuf) or (not na(r2T[1]) and close > r2T[1] + brkBuf) or (not na(r3T[1]) and close > r3T[1] + brkBuf))
+bool supBroken  = barstate.isconfirmed and ((not na(s1B[1]) and close < s1B[1] - brkBuf) or (not na(s2B[1]) and close < s2B[1] - brkBuf) or (not na(s3B[1]) and close < s3B[1] - brkBuf))
+bool tapRes     = barstate.isconfirmed and ((not na(r1T) and high >= r1B and low <= r1T) or (not na(r2T) and high >= r2B and low <= r2T) or (not na(r3T) and high >= r3B and low <= r3T))
+bool tapSup     = barstate.isconfirmed and ((not na(s1B) and low <= s1T and high >= s1B) or (not na(s2B) and low <= s2T and high >= s2B) or (not na(s3B) and low <= s3T and high >= s3B))
+
+alertcondition(newResBand, "Elephant new RESISTANCE band", "🐘 New resistance band on {{ticker}} {{interval}} — a top is confirmed.")
+alertcondition(newSupBand, "Elephant new SUPPORT band", "🐘 New support band on {{ticker}} {{interval}} — a bottom is confirmed.")
+alertcondition(resBroken, "Elephant resistance BROKEN", "🐘 Resistance band broken on {{ticker}} {{interval}} at {{close}}.")
+alertcondition(supBroken, "Elephant support BROKEN", "🐘 Support band broken on {{ticker}} {{interval}} at {{close}}.")
+alertcondition(tapRes, "Elephant resistance tapped", "🐘 Price is tapping a resistance band on {{ticker}} {{interval}} at {{close}}.")
+alertcondition(tapSup, "Elephant support tapped", "🐘 Price is tapping a support band on {{ticker}} {{interval}} at {{close}}.")
+
+if tapRes
+    alert("🐘 Resistance tapped | " + syminfo.ticker + " " + timeframe.period + " | " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+if tapSup
+    alert("🐘 Support tapped | " + syminfo.ticker + " " + timeframe.period + " | " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)

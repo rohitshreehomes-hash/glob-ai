@@ -9,6 +9,7 @@ const STRAT_FILE = path.join(ROOT, "indicators", "SOT_SMC_Pro_Strategy.pine");
 const ELEPHANT_FILE = path.join(ROOT, "indicators", "Elephant_Indicator.pine");
 const ELEPHANT_OVERLAY_FILE = path.join(ROOT, "indicators", "Elephant_Signals_Overlay.pine");
 const ELEPHANT_ZONES_FILE = path.join(ROOT, "indicators", "Elephant_Zones.pine");
+const ELEPHANT_BANDS_FILE = path.join(ROOT, "indicators", "Elephant_Bands.pine");
 const HTML_FILE = path.join(__dirname, "index.html");
 const ELEPHANT_HTML_FILE = path.join(__dirname, "elephant.html");
 
@@ -54,6 +55,7 @@ const server = http.createServer((req, res) => {
   if (urlPath === "/api/pine-elephant") return sendPine(ELEPHANT_FILE, "Elephant Indicator");
   if (urlPath === "/api/pine-overlay") return sendPine(ELEPHANT_OVERLAY_FILE, "Elephant Overlay");
   if (urlPath === "/api/pine-zones") return sendPine(ELEPHANT_ZONES_FILE, "Elephant Zones");
+  if (urlPath === "/api/pine-bands") return sendPine(ELEPHANT_BANDS_FILE, "Elephant Bands");
   if (urlPath === "/elephant" || urlPath === "/elephant.html") return sendHtml(ELEPHANT_HTML_FILE);
 
   return sendHtml(HTML_FILE);

@@ -4,6 +4,7 @@ Two files, one engine:
 
 | File | Pane | What it does |
 | :--- | :--- | :--- |
+| [`indicators/Elephant_Bands.pine`](../indicators/Elephant_Bands.pine) | price chart | **The exact construction from the video frame**: tops = orange bands, bottoms = cyan bands with green borders, key levels = blue dotted lines. Built the way the original is built — a pair of plotted level series with `fill()` between them, which is why the price axis shows **coloured tags** (orange / green / blue) |
 | [`indicators/Elephant_Indicator.pine`](../indicators/Elephant_Indicator.pine) | separate oscillator pane | The full elephant: fast pair, slow pair, long pair, trunk, EYE / TUSK / TRUNK pattern engine, confluence score, HUD, gauge table, 8 alerts |
 | [`indicators/Elephant_Signals_Overlay.pine`](../indicators/Elephant_Signals_Overlay.pine) | price chart | Same engine drawn on price with 🐘 BUY/SELL labels, entry / stop / T1 / T2 trade plan and plan lines |
 | [`indicators/Elephant_Zones.pine`](../indicators/Elephant_Zones.pine) | price chart | **The look from the course video**: grey top/bottom zones (supply above, demand below) extended to the right, dotted reaction edge, tap / break alerts — from **swing pivots** *and* from **PDH / PDL / PWH / PWL** |
@@ -27,7 +28,34 @@ No performance numbers are claimed for this file. It has **not** been back-teste
 
 ---
 
-## 🟫 The grey zone overlay (`Elephant_Zones.pine`) — the screenshot look
+## 🔎 How the video indicator is actually built (identified from the ETH 15m frame)
+
+The full-colour frame gives the construction away. Those bands are **not rectangles**:
+
+| Clue in the frame | What it proves |
+| :--- | :--- |
+| price-axis tags **coloured orange / green / blue**, two per band (top edge + bottom edge) | an overlay indicator's **plot values** are shown on the price scale in the plot's own colour. Pine `box` / `line` drawings cannot write to the price scale. |
+| band **starts mid-chart** at the bar where a top/bottom is confirmed and runs to the right | the level series is `na` until the pivot is confirmed, then constant — a classic plotted step series |
+| band **stops** where price closes through it, and a new band starts at a new level | the series goes back to `na` on mitigation (plot with `style_linebr`) |
+| blue **dotted** lines with blue axis tags | `plot(style=plot.style_circles, trackprice=true)` — not a drawing |
+| legend collapsed to a single character ("2") | the author renamed the script to hide its identity — the logic has to be inferred, not copied |
+
+So the faithful rebuild is `Elephant_Bands.pine`: **two plotted levels + one `fill()` per band**, three live slots per side, `na` on mitigation. That reproduces the look *and* the coloured price-scale labels, which the box-based `Elephant_Zones.pine` cannot do.
+
+| | `Elephant_Bands.pine` (video) | `Elephant_Zones.pine` (boxes) |
+| :--- | :--- | :--- |
+| Drawing method | `plot()` pairs + `fill()` | `box.new()` |
+| Coloured price-axis tags | **yes** (automatic, per plot) | no (right-edge labels only) |
+| Bands | 3 resistance + 3 support, newest first | pivots + PDH/PDL/PDC/PWH/PWL |
+| Mitigation | series → `na`, band disappears | box frozen / faded / deleted |
+| Key levels | blue dotted PDH / PDL (`style_circles`, `trackprice`) | dotted line at each box edge |
+| Best for | the exact course-chart look | labelled zone map with HTF bands |
+
+**Bands settings:** `Pivot strength` 5 · `Band depth` 0.35 ATR · `Break buffer` 0.15 ATR · `Live bands per side` 3 · `PDH/PDL` ON. Colours are the video's: resistance border `#ff9800` with 86 % transparent fill; support border `#00c853` with cyan `#00bcd4` fill; key levels `#2962ff`.
+
+---
+
+## 🟫 The grey zone overlay (`Elephant_Zones.pine`) — the box version
 
 The course video shows ETH 15m with long **light-grey horizontal bands** sitting on tops and bottoms, and a dotted line at the edge price reacts to. That is exactly what this file draws, automatically:
 
@@ -141,6 +169,9 @@ Each fires **once per closed bar** (`alert.freq_once_per_bar_close`), and the BU
 | Same VM, overlay file | **0 runtime errors**, 18 streams |
 | Same VM, zones file | **0 runtime errors**; 16 live boxes / 16 dotted lines / 16 labels at the right of a 900-bar feed (8 resistance + 8 support, 8 mitigated) |
 | PineForge + g++ on the zones file | **0 errors**, 1,913 C++ lines (swing + HTF levels), `rc = 0` |
+| PineForge + g++ on the bands file | **0 errors**, 1,520 C++ lines, `rc = 0` |
+| PineTS VM on the bands file | **0 runtime errors**, 30 streams — all 12 band-level plots carry data (e.g. resistance 1 = 641 bars, support 1 = 770 bars), PDH/PDL plot 825 bars |
+| JS port in the terminal | 3 live resistance + 3 live support bands at the last bar, PDH/PDL dotted step lines, coloured axis tags |
 | Signal sanity on that feed | 55 eyes → 4 BUY TUSK, 4 SELL TUSK, 5 FULL ELEPHANT confirmations, 8 top / 9 bottom exhaustion events (≈0.7 scored entries per session — a scanner cadence, not a machine gun) |
 | JS mirror in `preview/elephant.html` | renders both canvases + HUD + stats against a DOM stub with **0 runtime errors**; identical state machine, session gate and scoring |
 
